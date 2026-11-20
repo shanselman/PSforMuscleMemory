@@ -1,37 +1,35 @@
 # PSforMuscleMemory
 
-An opt-in PowerShell module for two cmd.exe habits:
+Use familiar cmd.exe commands in PowerShell, with a chance to review the translation:
 
 ```powershell
-dir /s 'my folder'  # Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath 'my folder' -Recurse
-rd /s 'my folder'   # Microsoft.PowerShell.Management\Remove-Item -LiteralPath 'my folder' -Recurse -WhatIf
+dir /s 'my folder'  # Lists recursively
+rd /s 'my folder'   # Previews recursive removal; does not delete
 ```
 
-`dir /s` without a path lists the current directory. The switch and path may appear in either order. Commands and `/s` are case-insensitive. Supply one literal path (quoted if necessary); variables, expansions, other switches, pipelines, redirections, and multiple commands are not supported. Paths beginning with `/` or `-` are not supported in this prototype. Paths are treated literally, including wildcard characters. No `-Force` is added.
+Press Enter once to see the PowerShell command, then Enter again to run it. Other commands run on the first Enter. Editing the rewrite makes it fresh input, so an ordinary PowerShell command runs immediately.
 
-For a supported command, the first Enter rewrites the line without running it. Review the PowerShell command, then press Enter again to run it. If you edit the rewrite, the next Enter treats it as fresh input: another supported muscle-memory command is rewritten for review; an ordinary PowerShell command runs immediately.
+## Get started
 
-## Try it
-
-Requires PowerShell 7.2 or newer and PSReadLine 2.2 or newer in an interactive host. Automated checks run with PowerShell 7.7 and PSReadLine 2.2 and 2.4.5 on Windows. The two-Enter `dir /s` and `rd /s` flows were also verified interactively in PowerShell 7.7 on Windows with a normal profile, an `AcceptLine` binding, and an existing command-validation handler. Clone this repository, then:
+Requires PowerShell 7.2+ and PSReadLine 2.2+ in an interactive terminal. Clone the repository and enable the module for the current session:
 
 ```powershell
+git clone https://github.com/shanselman/PSforMuscleMemory.git
+Set-Location PSforMuscleMemory
 Import-Module .\PSforMuscleMemory.psd1
 Enable-PSforMuscleMemory
-dir /s .
-rd /s '.\folder to preview'
-Disable-PSforMuscleMemory
-Remove-Module PSforMuscleMemory
 ```
 
-Run the examples from the repository directory. Importing alone does not change key bindings. Enable installs a session-only Enter handler; disable or module removal restores the original Enter binding if it is still ours. Enable refuses Vi mode or an existing custom Enter binding. An existing command-validation handler is preserved when Enter is bound to `AcceptLine`, which does not invoke that handler. If Enter is bound to `ValidateAndAcceptLine`, the module refuses to enable with a command-validation handler: it could modify a translated preview after the safety check. If one is installed afterward, Enter refuses to execute until the conflict is removed or this module is disabled.
+To turn it off, run `Disable-PSforMuscleMemory`. It restores the original Enter binding if it has not been changed since enabling. Importing the module alone does not enable it or change your profile.
 
-## Safety boundary
+Enable refuses Vi mode and custom Enter bindings. It preserves an existing validation hook with `AcceptLine`, but refuses `ValidateAndAcceptLine` with a validation hook because that hook could alter a preview. Installing such a hook afterward blocks Enter until the conflict is removed or the module is disabled.
 
-Every `rd /s` translation is a **preview**, always using `-WhatIf`; there is no deletion mode or opt-out. Unsupported `rd /s` input seen by this Enter handler is rejected instead of running the `rd` alias. Editing the rewritten line can turn it into an ordinary PowerShell command, which is not protected: removing `-WhatIf` can allow actual deletion. This is not a general deletion safeguard: native PowerShell commands, `rd` without `/s`, scripts, alternate PSReadLine accept bindings, other hosts, and commands entered while disabled are outside its scope. Do not rely on it as a security boundary. Changing PSReadLine settings or key bindings while enabled can bypass or disrupt interception.
+## Safety and supported syntax
 
-For a pure translation without enabling interactive interception, use `ConvertFrom-MuscleMemoryCommand 'rd /s .\example'`. It returns the translated command as text, returns unrelated input unchanged, and throws for unsupported attempted translations. It does not execute the returned text.
+Every `rd /s` translation includes **`-WhatIf`**; there is no deletion mode. This is not a general deletion safeguard: normal PowerShell commands, scripts, alternate accept bindings, and commands entered while disabled are not protected. Editing the rewrite to remove `-WhatIf` can permit real deletion.
+
+Use `dir /s [path]` or `rd /s path`, with the switch and path in either order. `dir /s` alone lists the current directory. Commands and `/s` are case-insensitive. Paths are literal, including wildcards; quote paths with spaces. Paths beginning with `/` or `-`, variables, other switches, pipelines, redirections, and multiple commands are not supported. Unsupported `rd /s` input is rejected. No `-Force` is added.
 
 ## Tests
 
-Run `.\tests\PSforMuscleMemory.Tests.ps1` in PowerShell 7. The filesystem test creates a uniquely named fixture under the system temporary directory and leaves it there so the test never performs live deletion.
+Run `.\tests\PSforMuscleMemory.Tests.ps1`. The tests leave a uniquely named fixture in the system temporary directory rather than deleting it. Automated checks passed on Windows with PowerShell 7.7 and PSReadLine 2.2 and 2.4.5. Both commands were also verified interactively with PowerShell 7.7 in a normal-profile terminal using `AcceptLine` and an existing validation hook.
