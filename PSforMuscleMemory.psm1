@@ -74,26 +74,32 @@ function Enable-PSforMuscleMemory {
     param()
 
     if ($script:enabled) { return }
-    Import-Module PSReadLine -MinimumVersion 2.2 -ErrorAction Stop
+    $readLine = @(Get-Module PSReadLine)
+    if ($readLine.Count -eq 0) {
+        Import-Module PSReadLine -MinimumVersion 2.2 -ErrorAction Stop
+    } elseif (@($readLine | Where-Object { $_.Version -lt [version]'2.2' }).Count -gt 0) {
+        throw 'PSforMuscleMemory requires PSReadLine 2.2 or newer.'
+    }
     $options = Get-PSReadLineOption
     $binding = Get-PSReadLineKeyHandler -Chord Enter
     if ($options.EditMode -eq 'Vi') {
         throw 'PSforMuscleMemory does not support PSReadLine Vi mode.'
     }
-    if ($null -ne $options.CommandValidationHandler) {
-        throw 'PSforMuscleMemory cannot enable while a PSReadLine command-validation handler is installed.'
-    }
     if ($null -eq $binding -or $binding.Group -eq 'Custom' -or
         $binding.Function -notin @('AcceptLine', 'ValidateAndAcceptLine')) {
         throw 'PSforMuscleMemory cannot replace the existing Enter binding.'
+    }
+    if ($binding.Function -eq 'ValidateAndAcceptLine' -and $null -ne $options.CommandValidationHandler) {
+        throw 'PSforMuscleMemory cannot safely use ValidateAndAcceptLine with an existing command-validation handler.'
     }
     $script:originalEnter = $binding.Function
     $script:originalEditMode = $options.EditMode
 
     Set-PSReadLineKeyHandler -Chord Enter -BriefDescription $script:bindingName -Description $script:bindingDescription -ScriptBlock {
         param($key, $arg)
-        if ($null -ne (Get-PSReadLineOption).CommandValidationHandler) {
-            [Console]::Error.WriteLine('PSforMuscleMemory: a command-validation handler was installed; remove it or disable PSforMuscleMemory before accepting input.')
+        if ($script:originalEnter -eq 'ValidateAndAcceptLine' -and
+            $null -ne (Get-PSReadLineOption).CommandValidationHandler) {
+            [Console]::Error.WriteLine('PSforMuscleMemory: ValidateAndAcceptLine cannot safely run with a command-validation handler; remove it or disable PSforMuscleMemory before accepting input.')
             return
         }
         $line = $null

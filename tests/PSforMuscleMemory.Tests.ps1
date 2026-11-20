@@ -104,7 +104,7 @@ $PSDefaultParameterValues.Remove('*:WhatIf')
 Assert-True (Test-Path -LiteralPath $fixture -PathType Container) 'Preview removed the fixture.'
 Assert-True (Test-Path -LiteralPath $file -PathType Leaf) 'Preview removed the nested file.'
 
-Import-Module PSReadLine -MinimumVersion 2.2
+if (-not (Get-Module PSReadLine)) { Import-Module PSReadLine -MinimumVersion 2.2 }
 $original = Get-PSReadLineKeyHandler -Chord Enter
 Assert-True ($null -eq (Get-PSReadLineOption).CommandValidationHandler) 'Test requires no existing validation handler.'
 try {
@@ -121,11 +121,26 @@ try {
     Assert-Equal (Get-PSReadLineKeyHandler -Chord Enter).Function 'ExistingTestHandler'
     Set-PSReadLineKeyHandler -Chord Enter -Function $original.Function
 
+    Set-PSReadLineKeyHandler -Chord Enter -Function AcceptLine
     Set-PSReadLineOption -CommandValidationHandler { param($commandAst) }
+    $hook = (Get-PSReadLineOption).CommandValidationHandler
+    Enable-PSforMuscleMemory
+    Assert-True ([object]::ReferenceEquals($hook, (Get-PSReadLineOption).CommandValidationHandler)) 'Enable replaced the existing validation handler.'
+    $state = [pscustomobject]@{ Line = ''; Rewrites = 0; Accepts = 0 }
+    Invoke-TestEnter "rd /s '$escaped'" $state
+    Assert-Equal $state.Line $translated
+    Invoke-TestEnter $state.Line $state
+    Assert-True ($state.Rewrites -eq 1 -and $state.Accepts -eq 1) 'Existing validation handler disrupted the two-Enter flow.'
+    Disable-PSforMuscleMemory
+    Assert-True ([object]::ReferenceEquals($hook, (Get-PSReadLineOption).CommandValidationHandler)) 'Disable replaced the existing validation handler.'
+    Assert-Equal (Get-PSReadLineKeyHandler -Chord Enter).Function 'AcceptLine'
+
+    Set-PSReadLineKeyHandler -Chord Enter -Function ValidateAndAcceptLine
     $rejected = $false
     try { Enable-PSforMuscleMemory } catch { $rejected = $true }
-    Assert-True $rejected 'Existing validation handler must not be overwritten.'
-    Assert-True ($null -ne (Get-PSReadLineOption).CommandValidationHandler) 'Existing validation handler was lost.'
+    Assert-True $rejected 'ValidateAndAcceptLine with a validation handler must be rejected.'
+    Assert-True ([object]::ReferenceEquals($hook, (Get-PSReadLineOption).CommandValidationHandler)) 'Existing validation handler was lost.'
+    Assert-Equal (Get-PSReadLineKeyHandler -Chord Enter).Function 'ValidateAndAcceptLine'
     Set-PSReadLineOption -CommandValidationHandler $null
 
     Set-PSReadLineKeyHandler -Chord Enter -Function ValidateAndAcceptLine

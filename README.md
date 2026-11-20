@@ -13,7 +13,7 @@ For a supported command, the first Enter rewrites the line without running it. R
 
 ## Try it
 
-Requires PowerShell 7.2 or newer and PSReadLine 2.2 or newer in an interactive host. Tested with PowerShell 7.7 and PSReadLine 2.2 on Windows. Clone this repository, then:
+Requires PowerShell 7.2 or newer and PSReadLine 2.2 or newer in an interactive host. Automated checks run with PowerShell 7.7 and PSReadLine 2.2 and 2.4.5 on Windows. Clone this repository, then:
 
 ```powershell
 Import-Module .\PSforMuscleMemory.psd1
@@ -24,7 +24,7 @@ Disable-PSforMuscleMemory
 Remove-Module PSforMuscleMemory
 ```
 
-Run the examples from the repository directory. Importing alone does not change key bindings. Enable installs a session-only Enter handler; disable or module removal restores the original Enter binding if it is still ours. Enable refuses Vi mode, an existing custom Enter binding, or an existing PSReadLine command-validation handler rather than replacing them. If a validation handler is installed afterward, Enter refuses to execute until the conflict is removed or this module is disabled.
+Run the examples from the repository directory. Importing alone does not change key bindings. Enable installs a session-only Enter handler; disable or module removal restores the original Enter binding if it is still ours. Enable refuses Vi mode or an existing custom Enter binding. An existing command-validation handler is preserved when Enter is bound to `AcceptLine`, which does not invoke that handler. If Enter is bound to `ValidateAndAcceptLine`, the module refuses to enable with a command-validation handler: it could modify a translated preview after the safety check. If one is installed afterward, Enter refuses to execute until the conflict is removed or this module is disabled.
 
 ## Safety boundary
 
