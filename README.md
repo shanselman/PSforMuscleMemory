@@ -26,9 +26,9 @@ Enable refuses Vi mode and custom Enter bindings. It preserves an existing valid
 
 ## Safety and supported syntax
 
-Every `rd /s` translation includes **`-WhatIf`**; there is no deletion mode. This is not a general deletion safeguard: normal PowerShell commands, scripts, alternate accept bindings, and commands entered while disabled are not protected. Editing the rewrite to remove `-WhatIf` can permit real deletion.
+Every `rd /s` translation includes **`-WhatIf`**; there is no deletion mode. This is not a general deletion safeguard: normal PowerShell commands, scripts, alternate accept bindings, and commands entered while disabled are not protected. Editing away `-WhatIf` removes preview protection and can permit real deletion.
 
-Use `dir /s [path]` or `rd /s path`, with the switch and path in either order. `dir /s` alone lists the current directory. Commands and `/s` are case-insensitive. Paths are literal, including wildcards; quote paths with spaces. Paths beginning with `/` or `-`, variables, other switches, pipelines, redirections, and multiple commands are not supported. Unsupported `rd /s` input is rejected. No `-Force` is added.
+Use `dir /s [path]` or `rd /s path`, with the switch and path in either order. `dir /s` alone lists the current directory. Commands and `/s` are case-insensitive. Paths are literal: `dir /s *.txt` is not a recursive filename-pattern search. Quote paths with spaces. Paths beginning with `/` or `-`, variables, other switches, pipelines, redirections, and multiple commands are not supported. Unsupported `rd /s` input is rejected. No `-Force` is added.
 
 ## Tests
 
