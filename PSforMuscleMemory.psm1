@@ -126,6 +126,43 @@ function ConvertFrom-MuscleMemoryMove {
     return "Microsoft.PowerShell.Management\Move-Item -LiteralPath $source -Destination $destination -WhatIf"
 }
 
+function Convert-MuscleMemoryEnvironmentArgument {
+    param([StringConstantExpressionAst] $Element, [switch] $Resolve)
+
+    $text = $Element.Extent.Text
+    if (-not $text.Contains('%') -or $Element.StringConstantType -ne [StringConstantType]::BareWord -or
+        $text -match '[''"`\u2018-\u201f]' -or $text -cne $Element.Value) {
+        if ($Resolve) { return $Element.Value }
+        return $text
+    }
+
+    $result = ''
+    $offset = 0
+    foreach ($match in [regex]::Matches($text, '%([A-Za-z0-9_]+)%')) {
+        $name = $match.Groups[1].Value
+        if ($IsWindows) { $name = $name.ToUpperInvariant() }
+        $value = [Environment]::GetEnvironmentVariable($name)
+        if ($null -eq $value -and -not $IsWindows) {
+            # Use the actual spelling for PowerShell's case-sensitive Env: drive.
+            $name = [Environment]::GetEnvironmentVariables().Keys | Where-Object { $_ -ieq $name } | Select-Object -First 1
+            if ($null -ne $name) { $value = [Environment]::GetEnvironmentVariable($name) }
+        }
+        if ($null -eq $value) { continue }
+
+        if ($Resolve) {
+            $result += $text.Substring($offset, $match.Index - $offset) + $value
+        } elseif ($match.Length -eq $text.Length) {
+            return '$env:' + $name
+        } else {
+            $result += $text.Substring($offset, $match.Index - $offset).Replace('$', '`$') + '${env:' + $name + '}'
+        }
+        $offset = $match.Index + $match.Length
+    }
+    if ($offset -eq 0) { return $text }
+    if ($Resolve) { return $result + $text.Substring($offset) }
+    return '"' + $result + $text.Substring($offset).Replace('$', '`$') + '"'
+}
+
 function ConvertFrom-MuscleMemoryCommand {
     [CmdletBinding()]
     param([Parameter(Mandatory)][AllowEmptyString()][string] $Line)
@@ -162,21 +199,41 @@ function ConvertFrom-MuscleMemoryCommand {
         }, $true)).Count -gt 0
     })
 
-    if ($attempts.Count -eq 0) { return $Line }
-
+    if ($commands.Count -eq 0) { return $Line }
     $usage = 'Unsupported DOS-style command. Use cd /d path, dir /b [path], dir /s [path-or-filename-pattern], dir /a [path], dir /o:n [path], dir /o:-d [path], rd /s [/q] path, del /s filename-pattern, where filename-pattern, sort filename, copy /y source destination, or move /y source destination.'
-    $command = $attempts[0]
-    if ($parseErrors.Count -ne 0 -or $attempts.Count -ne 1 -or $commands.Count -ne 1 -or
+    $command = $commands[0]
+    if ($parseErrors.Count -ne 0 -or $commands.Count -ne 1 -or
         $command.InvocationOperator -ne [TokenKind]::Unknown -or
         $Line.Trim() -cne $command.Extent.Text -or $command.Redirections.Count -ne 0) {
-        throw $usage
+        if ($attempts.Count -gt 0) { throw $usage }
+        return $Line
     }
 
     $elements = @($command.CommandElements | Select-Object -Skip 1)
+    if ($attempts.Count -eq 0) {
+        if (-not $Line.Contains('%') -or '--%' -cin $tokens.Text) { return $Line }
+        # Replace from right to left so the original AST offsets stay valid.
+        for ($i = $elements.Count - 1; $i -ge 0; $i--) {
+            $element = $elements[$i]
+            if ($element -isnot [StringConstantExpressionAst]) { continue }
+            $replacement = Convert-MuscleMemoryEnvironmentArgument $element
+            $extent = $element.Extent
+            if ($replacement -cne $extent.Text) {
+                $Line = $Line.Remove($extent.StartOffset, $extent.EndOffset - $extent.StartOffset).Insert($extent.StartOffset, $replacement)
+            }
+        }
+        return $Line
+    }
+
     if (@($elements | Where-Object { $_ -isnot [StringConstantExpressionAst] }).Count -ne 0) {
         throw $usage
     }
-    $arguments = @($elements | ForEach-Object { $_.Value })
+    $arguments = @(foreach ($element in $elements) {
+        $resolved = Convert-MuscleMemoryEnvironmentArgument $element -Resolve
+        # A value substituted into a path must not be reinterpreted as a DOS switch.
+        if ($resolved -cne $element.Value -and $resolved -match '^[/\-]') { throw $usage }
+        $resolved
+    })
 
     switch ($command.GetCommandName().ToLowerInvariant()) {
         'cd' { return ConvertFrom-MuscleMemoryCd $arguments $usage }

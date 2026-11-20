@@ -3,6 +3,7 @@
 Use familiar cmd.exe commands in PowerShell, with a chance to review the translation:
 
 ```powershell
+cd %temp%            # Shows cd $env:TEMP
 cd /d 'D:\my folder' # Changes location, including drive
 dir /b               # Lists bare names
 dir /s *.txt         # Lists matching filenames recursively
@@ -39,6 +40,8 @@ Enable refuses Vi mode and custom Enter bindings. It preserves an existing valid
 Every `rd /s`, `del /s`, `copy /y`, and `move /y` translation includes **`-WhatIf`**; there is no deletion or overwrite mode. `rd /s /q` remains preview-only despite cmd.exe's quiet-delete meaning. `del /s` previews matching files in the current directory tree and never removes directories. `copy /y` and `move /y` preview one literal source and destination; they do not overwrite or move files. This is not a general safeguard: normal PowerShell commands, scripts, alternate accept bindings, and commands entered while disabled are not protected. Editing away `-WhatIf` removes preview protection and can permit real deletion or overwrite.
 
 Supported forms are `cd /d path`, `dir /b [path]`, `dir /s [path-or-filename-pattern]`, `dir /a [path]`, `dir /o:n [path]`, `dir /o:-d [path]`, `rd /s [/q] path`, `del /s filename-pattern`, `where filename-pattern`, `sort filename`, `copy /y source destination`, and `move /y source destination`. Paths are literal and may be quoted; quote paths with spaces. `dir /s *.txt` and `del /s *.txt` match filenames recursively in the current directory tree; `del /s` patterns must be filename-only. `dir /a` includes hidden and system entries. The supported `/o` options sort by name ascending or modification time newest first.
+
+In a single simple command, bare arguments can use `%NAME%` (letters, digits, and underscores). Names are matched case-insensitively; undefined names, quoted arguments, and command names are left alone. For example, `cd %temp%\work` shows `cd "${env:TEMP}\work"`. DOS forms such as `dir /s %temp%` and `cd /d %userprofile%\work` instead capture the current value in a quoted literal path, so that value is visible in the preview and command history. Expanded paths must still satisfy the DOS form's rules, and destructive forms still include `-WhatIf`.
 
 On Windows, `where` calls the system `where.exe` to search the current directory and PATH for all matches. It accepts one filename pattern (`*` and `?` are allowed), without search locations or extra switches. This shorthand is unavailable outside Windows. Standalone `sort filename` sorts lines from one literal file; PowerShell pipelines such as `gci | sort Name.Length` pass through unchanged. Copy and move previews require `/y` and exactly one literal source and destination; unflagged PowerShell copy and move commands pass through unchanged and are not previewed. Commands and switches are case-insensitive. Variables, expressions, unsupported switches, pipelines, redirections, and multiple commands are rejected for attempted DOS forms. Other commands pass through unchanged.
 
