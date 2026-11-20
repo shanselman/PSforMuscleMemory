@@ -5,6 +5,7 @@ $script:originalEnter = $null
 $script:originalEditMode = $null
 $script:bindingName = 'PSforMuscleMemory-ValidateEnter'
 $script:bindingDescription = 'Translate supported cmd.exe muscle-memory commands'
+$script:whereInvalidPattern = '^[/-]|[\\/:\[\]"<>|\x00\r\n]'
 
 function ConvertTo-MuscleMemoryLiteral {
     param([string] $Value, [string] $Usage)
@@ -16,25 +17,33 @@ function ConvertTo-MuscleMemoryLiteral {
     return "'" + ($Value -replace "['\u2018\u2019\u201A\u201B]", '$&$&') + "'"
 }
 
-function ConvertFrom-MuscleMemoryCd {
-    param([string[]] $Arguments, [string] $Usage)
+function ConvertTo-MuscleMemoryOperand {
+    param($Argument, [string] $Usage)
 
-    if ($Arguments.Count -ne 2 -or $Arguments[0] -ine '/d') { throw $Usage }
-    $literal = ConvertTo-MuscleMemoryLiteral $Arguments[1] $Usage
+    $literal = ConvertTo-MuscleMemoryLiteral $Argument.Value $Usage
+    if ($Argument.Expression) { return $Argument.Expression }
+    return $literal
+}
+
+function ConvertFrom-MuscleMemoryCd {
+    param([object[]] $Arguments, [string] $Usage)
+
+    if ($Arguments.Count -ne 2 -or $Arguments[0].Value -ine '/d') { throw $Usage }
+    $literal = ConvertTo-MuscleMemoryOperand $Arguments[1] $Usage
     return "Microsoft.PowerShell.Management\Set-Location -LiteralPath $literal"
 }
 
 function ConvertFrom-MuscleMemoryDir {
-    param([string[]] $Arguments, [string] $Usage)
+    param([object[]] $Arguments, [string] $Usage)
 
     $modes = @('/s', '/b', '/a', '/o:n', '/o:-d')
-    $switches = @($Arguments | Where-Object { $_ -in $modes })
-    $paths = @($Arguments | Where-Object { $_ -notin $modes })
+    $switches = @($Arguments | Where-Object { $_.Value -in $modes })
+    $paths = @($Arguments | Where-Object { $_.Value -notin $modes })
     if ($switches.Count -ne 1 -or $paths.Count -gt 1) { throw $Usage }
-    $path = if ($paths.Count -eq 0) { '.' } else { $paths[0] }
-    $literal = ConvertTo-MuscleMemoryLiteral $path $Usage
+    $path = if ($paths.Count -eq 0) { '.' } else { $paths[0].Value }
+    $literal = if ($paths.Count -eq 0) { "'.'" } else { ConvertTo-MuscleMemoryOperand $paths[0] $Usage }
 
-    switch -CaseSensitive ($switches[0].ToLowerInvariant()) {
+    switch -CaseSensitive ($switches[0].Value.ToLowerInvariant()) {
         '/b' {
             if ($path.IndexOfAny([char[]]@('*', '?')) -ge 0) { throw $Usage }
             return "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath $literal -Name"
@@ -63,80 +72,84 @@ function ConvertFrom-MuscleMemoryDir {
 }
 
 function ConvertFrom-MuscleMemoryRd {
-    param([string[]] $Arguments, [string] $Usage)
+    param([object[]] $Arguments, [string] $Usage)
 
-    $recursive = @($Arguments | Where-Object { $_ -ieq '/s' })
-    $quiet = @($Arguments | Where-Object { $_ -ieq '/q' })
-    $paths = @($Arguments | Where-Object { $_ -ine '/s' -and $_ -ine '/q' })
+    $recursive = @($Arguments | Where-Object { $_.Value -ieq '/s' })
+    $quiet = @($Arguments | Where-Object { $_.Value -ieq '/q' })
+    $paths = @($Arguments | Where-Object { $_.Value -ine '/s' -and $_.Value -ine '/q' })
     if ($recursive.Count -ne 1 -or $quiet.Count -gt 1 -or $paths.Count -ne 1) { throw $Usage }
-    $literal = ConvertTo-MuscleMemoryLiteral $paths[0] $Usage
+    $literal = ConvertTo-MuscleMemoryOperand $paths[0] $Usage
     return "Microsoft.PowerShell.Management\Remove-Item -LiteralPath $literal -Recurse -WhatIf"
 }
 
 function ConvertFrom-MuscleMemoryDel {
-    param([string[]] $Arguments, [string] $Usage)
+    param([object[]] $Arguments, [string] $Usage)
 
-    $recursive = @($Arguments | Where-Object { $_ -ieq '/s' })
-    $patterns = @($Arguments | Where-Object { $_ -ine '/s' })
+    $recursive = @($Arguments | Where-Object { $_.Value -ieq '/s' })
+    $patterns = @($Arguments | Where-Object { $_.Value -ine '/s' })
     if ($recursive.Count -ne 1 -or $patterns.Count -ne 1) { throw $Usage }
-    $pattern = $patterns[0]
+    $pattern = $patterns[0].Value
     if ($pattern.IndexOfAny([char[]]@('\', '/', '[', ']')) -ge 0) { throw $Usage }
-    $literal = ConvertTo-MuscleMemoryLiteral $pattern $Usage
+    $literal = ConvertTo-MuscleMemoryOperand $patterns[0] $Usage
     return "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '.' -Filter $literal -Recurse -File | Microsoft.PowerShell.Management\Remove-Item -WhatIf"
 }
 
 function ConvertFrom-MuscleMemoryWhere {
-    param([string[]] $Arguments, [string] $Usage)
+    param([object[]] $Arguments, [string] $Usage)
 
-    if ($Arguments.Count -ne 1 -or $Arguments[0].IndexOfAny([char[]]'\/:[]"<>|') -ge 0) { throw $Usage }
-    $literal = ConvertTo-MuscleMemoryLiteral $Arguments[0] $Usage
+    if ($Arguments.Count -ne 1 -or $Arguments[0].Value -match $script:whereInvalidPattern) { throw $Usage }
+    $literal = ConvertTo-MuscleMemoryOperand $Arguments[0] $Usage
     if (-not $IsWindows) { throw 'The DOS-style where command requires Windows where.exe.' }
     $application = "$([Environment]::SystemDirectory)\where.exe"
     $quotedApplication = ConvertTo-MuscleMemoryLiteral $application $Usage
+    if ($Arguments[0].Expression) {
+        # Native where.exe could interpret a changed value as a switch or search location.
+        return ('& {{ param([string] $pattern) if ([string]::IsNullOrWhiteSpace($pattern) -or $pattern -match ''{0}'') {{ throw ''Expected a where.exe filename pattern.'' }}; & {1} $pattern }} {2}' -f $script:whereInvalidPattern, $quotedApplication, $literal)
+    }
     return "& $quotedApplication $literal"
 }
 
 function ConvertFrom-MuscleMemorySort {
-    param([string[]] $Arguments, [string] $Usage)
+    param([object[]] $Arguments, [string] $Usage)
 
     if ($Arguments.Count -ne 1) { throw $Usage }
-    $literal = ConvertTo-MuscleMemoryLiteral $Arguments[0] $Usage
+    $literal = ConvertTo-MuscleMemoryOperand $Arguments[0] $Usage
     return "Microsoft.PowerShell.Management\Get-Content -LiteralPath $literal | Microsoft.PowerShell.Utility\Sort-Object"
 }
 
 function ConvertFrom-MuscleMemoryCopy {
-    param([string[]] $Arguments, [string] $Usage)
+    param([object[]] $Arguments, [string] $Usage)
 
-    $overwrite = @($Arguments | Where-Object { $_ -ieq '/y' })
-    $paths = @($Arguments | Where-Object { $_ -ine '/y' })
+    $overwrite = @($Arguments | Where-Object { $_.Value -ieq '/y' })
+    $paths = @($Arguments | Where-Object { $_.Value -ine '/y' })
     if ($overwrite.Count -ne 1 -or $paths.Count -ne 2) { throw $Usage }
-    $source = ConvertTo-MuscleMemoryLiteral $paths[0] $Usage
-    $destination = ConvertTo-MuscleMemoryLiteral $paths[1] $Usage
+    $source = ConvertTo-MuscleMemoryOperand $paths[0] $Usage
+    $destination = ConvertTo-MuscleMemoryOperand $paths[1] $Usage
     return "Microsoft.PowerShell.Management\Copy-Item -LiteralPath $source -Destination $destination -WhatIf"
 }
 
 function ConvertFrom-MuscleMemoryMove {
-    param([string[]] $Arguments, [string] $Usage)
+    param([object[]] $Arguments, [string] $Usage)
 
-    $overwrite = @($Arguments | Where-Object { $_ -ieq '/y' })
-    $paths = @($Arguments | Where-Object { $_ -ine '/y' })
+    $overwrite = @($Arguments | Where-Object { $_.Value -ieq '/y' })
+    $paths = @($Arguments | Where-Object { $_.Value -ine '/y' })
     if ($overwrite.Count -ne 1 -or $paths.Count -ne 2) { throw $Usage }
-    $source = ConvertTo-MuscleMemoryLiteral $paths[0] $Usage
-    $destination = ConvertTo-MuscleMemoryLiteral $paths[1] $Usage
+    $source = ConvertTo-MuscleMemoryOperand $paths[0] $Usage
+    $destination = ConvertTo-MuscleMemoryOperand $paths[1] $Usage
     return "Microsoft.PowerShell.Management\Move-Item -LiteralPath $source -Destination $destination -WhatIf"
 }
 
 function Convert-MuscleMemoryEnvironmentArgument {
-    param([StringConstantExpressionAst] $Element, [switch] $Resolve)
+    param([StringConstantExpressionAst] $Element, [switch] $AllowUnquoted)
 
     $text = $Element.Extent.Text
+    $argument = [pscustomobject]@{ Value = $Element.Value; Expression = $null }
     if (-not $text.Contains('%') -or $Element.StringConstantType -ne [StringConstantType]::BareWord -or
         $text -match '[''"`\u2018-\u201f]' -or $text -cne $Element.Value) {
-        if ($Resolve) { return $Element.Value }
-        return $text
+        return $argument
     }
 
-    $result = ''
+    $resolved = $expression = ''
     $offset = 0
     foreach ($match in [regex]::Matches($text, '%([A-Za-z0-9_]+)%')) {
         $name = $match.Groups[1].Value
@@ -149,18 +162,22 @@ function Convert-MuscleMemoryEnvironmentArgument {
         }
         if ($null -eq $value) { continue }
 
-        if ($Resolve) {
-            $result += $text.Substring($offset, $match.Index - $offset) + $value
-        } elseif ($match.Length -eq $text.Length) {
-            return '$env:' + $name
-        } else {
-            $result += $text.Substring($offset, $match.Index - $offset).Replace('$', '`$') + '${env:' + $name + '}'
+        $prefix = $text.Substring($offset, $match.Index - $offset)
+        $resolved += $prefix + $value
+        $expression += $prefix.Replace('$', '`$') + '${env:' + $name + '}'
+        if ($AllowUnquoted -and $match.Length -eq $text.Length) {
+            $argument.Value = $value
+            $argument.Expression = '$env:' + $name
+            return $argument
         }
         $offset = $match.Index + $match.Length
     }
-    if ($offset -eq 0) { return $text }
-    if ($Resolve) { return $result + $text.Substring($offset) }
-    return '"' + $result + $text.Substring($offset).Replace('$', '`$') + '"'
+    if ($offset -gt 0) {
+        $suffix = $text.Substring($offset)
+        $argument.Value = $resolved + $suffix
+        $argument.Expression = '"' + $expression + $suffix.Replace('$', '`$') + '"'
+    }
+    return $argument
 }
 
 function ConvertFrom-MuscleMemoryCommand {
@@ -211,28 +228,23 @@ function ConvertFrom-MuscleMemoryCommand {
 
     $elements = @($command.CommandElements | Select-Object -Skip 1)
     if ($attempts.Count -eq 0) {
-        if (-not $Line.Contains('%') -or '--%' -cin $tokens.Text) { return $Line }
-        # Replace from right to left so the original AST offsets stay valid.
-        for ($i = $elements.Count - 1; $i -ge 0; $i--) {
-            $element = $elements[$i]
-            if ($element -isnot [StringConstantExpressionAst]) { continue }
-            $replacement = Convert-MuscleMemoryEnvironmentArgument $element
-            $extent = $element.Extent
-            if ($replacement -cne $extent.Text) {
-                $Line = $Line.Remove($extent.StartOffset, $extent.EndOffset - $extent.StartOffset).Insert($extent.StartOffset, $replacement)
-            }
-        }
-        return $Line
+        # Do not silently retarget ordinary PowerShell operations such as rd or copy.
+        if ($command.GetCommandName() -ine 'cd' -or $elements.Count -ne 1 -or
+            $elements[0] -isnot [StringConstantExpressionAst]) { return $Line }
+        $argument = Convert-MuscleMemoryEnvironmentArgument $elements[0] -AllowUnquoted
+        if (-not $argument.Expression) { return $Line }
+        $extent = $elements[0].Extent
+        return $Line.Remove($extent.StartOffset, $extent.EndOffset - $extent.StartOffset).Insert($extent.StartOffset, $argument.Expression)
     }
 
     if (@($elements | Where-Object { $_ -isnot [StringConstantExpressionAst] }).Count -ne 0) {
         throw $usage
     }
     $arguments = @(foreach ($element in $elements) {
-        $resolved = Convert-MuscleMemoryEnvironmentArgument $element -Resolve
+        $argument = Convert-MuscleMemoryEnvironmentArgument $element
         # A value substituted into a path must not be reinterpreted as a DOS switch.
-        if ($resolved -cne $element.Value -and $resolved -match '^[/\-]') { throw $usage }
-        $resolved
+        if ($argument.Expression -and $argument.Value -match '^[/\-]') { throw $usage }
+        $argument
     })
 
     switch ($command.GetCommandName().ToLowerInvariant()) {

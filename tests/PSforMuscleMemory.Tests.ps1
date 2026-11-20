@@ -92,13 +92,7 @@ try {
     Invoke-TestEnter $state.Line $state
     Assert-True ($state.Rewrites -eq 1 -and $state.Accepts -eq 1) 'Second environment Enter must accept the preview.'
 
-    $rewrite = ConvertFrom-MuscleMemoryCommand '  Write-Output %mm_test_path%\x %MM_TEST_PATH%  '
-    Assert-Equal $rewrite '  Write-Output "${env:MM_TEST_PATH}\x" $env:MM_TEST_PATH  '
-    $env:MM_TEST_PATH = 'a''"; Write-Output unexpected'
-    $output = @(& ([scriptblock]::Create($rewrite)))
-    Assert-True ($output.Count -eq 2) 'Each expanded value must stay one argument.'
-    Assert-Equal $output[0] ($env:MM_TEST_PATH + '\x')
-    Assert-Equal $output[1] $env:MM_TEST_PATH
+    Assert-Equal (ConvertFrom-MuscleMemoryCommand '  cd %mm_test_path%\x  ') '  cd "${env:MM_TEST_PATH}\x"  '
 
     @(
         'cd "%MM_TEST_PATH%"'
@@ -108,6 +102,11 @@ try {
         '%MM_TEST_PATH% arg'
         'cd $env:MM_TEST_PATH'
         'cd %MM_UNDEFINED_72BCAE%'
+        'rd %MM_TEST_PATH%'
+        'del %MM_TEST_PATH%'
+        'copy %MM_TEST_PATH% target'
+        'move source %MM_TEST_PATH%'
+        'Remove-Item -LiteralPath %MM_TEST_PATH%'
         'git log --format=%H%n'
         'ffmpeg out%03d.png'
         '1..3 | % { $_ }'
@@ -119,22 +118,21 @@ try {
     ) | ForEach-Object { Assert-Equal (ConvertFrom-MuscleMemoryCommand $_) $_ }
 
     $env:MM_TEST_PATH = "folder's name"
-    Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir /s %mm_test_path%') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath 'folder''s name' -Recurse"
-    Assert-Equal (ConvertFrom-MuscleMemoryCommand 'cd /d %MM_TEST_PATH%\x') "Microsoft.PowerShell.Management\Set-Location -LiteralPath 'folder''s name\x'"
+    Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir /s %mm_test_path%') 'Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath "${env:MM_TEST_PATH}" -Recurse'
+    Assert-Equal (ConvertFrom-MuscleMemoryCommand 'cd /d %MM_TEST_PATH%\x') 'Microsoft.PowerShell.Management\Set-Location -LiteralPath "${env:MM_TEST_PATH}\x"'
     Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir /s "%MM_TEST_PATH%"') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '%MM_TEST_PATH%' -Recurse"
-    Assert-Equal (ConvertFrom-MuscleMemoryCommand 'del /s %MM_TEST_PATH%.txt') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '.' -Filter 'folder''s name.txt' -Recurse -File | Microsoft.PowerShell.Management\Remove-Item -WhatIf"
-    Assert-Equal (ConvertFrom-MuscleMemoryCommand 'copy /y %MM_TEST_PATH% target') "Microsoft.PowerShell.Management\Copy-Item -LiteralPath 'folder''s name' -Destination 'target' -WhatIf"
-    Assert-Equal (ConvertFrom-MuscleMemoryCommand 'move /y source %MM_TEST_PATH%') "Microsoft.PowerShell.Management\Move-Item -LiteralPath 'source' -Destination 'folder''s name' -WhatIf"
+    Assert-Equal (ConvertFrom-MuscleMemoryCommand 'del /s %MM_TEST_PATH%.txt') 'Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath ''.'' -Filter "${env:MM_TEST_PATH}.txt" -Recurse -File | Microsoft.PowerShell.Management\Remove-Item -WhatIf'
+    Assert-Equal (ConvertFrom-MuscleMemoryCommand 'copy /y %MM_TEST_PATH% target') 'Microsoft.PowerShell.Management\Copy-Item -LiteralPath "${env:MM_TEST_PATH}" -Destination ''target'' -WhatIf'
+    Assert-Equal (ConvertFrom-MuscleMemoryCommand 'move /y source %MM_TEST_PATH%') 'Microsoft.PowerShell.Management\Move-Item -LiteralPath ''source'' -Destination "${env:MM_TEST_PATH}" -WhatIf'
 
-    $env:MM_TEST_PATH = "a$([char]0x2019); Write-Output unexpected"
-    $rewrite = ConvertFrom-MuscleMemoryCommand 'rd /s %MM_TEST_PATH%'
-    $tokens = $parseErrors = $null
-    $ast = [System.Management.Automation.Language.Parser]::ParseInput($rewrite, [ref]$tokens, [ref]$parseErrors)
-    Assert-True ($parseErrors.Count -eq 0 -and $ast.EndBlock.Statements.Count -eq 1) 'Expanded path escaped the DOS literal.'
-    $command = $ast.EndBlock.Statements[0].PipelineElements[0]
-    Assert-Equal $command.CommandElements[2].Value $env:MM_TEST_PATH
-    Assert-Equal $command.CommandElements[-1].ParameterName 'WhatIf'
-    Assert-Equal (ConvertFrom-MuscleMemoryCommand $rewrite) $rewrite
+    if ($IsWindows) {
+        $rewrite = ConvertFrom-MuscleMemoryCommand 'where %MM_TEST_PATH%'
+        Assert-Equal (ConvertFrom-MuscleMemoryCommand $rewrite) $rewrite
+        $env:MM_TEST_PATH = '/?'
+        $message = $null
+        try { & ([scriptblock]::Create($rewrite)) } catch { $message = $_.Exception.Message }
+        Assert-Equal $message 'Expected a where.exe filename pattern.'
+    }
 
     $env:MM_TEST_PATH = '/s'
     Assert-Rejected 'rd /s %MM_TEST_PATH%'
@@ -284,8 +282,12 @@ try {
                     }
                 }
             }
+            $env:MM_TEST_PATH = "native tool's.cmd"
+            $rewrite = ConvertFrom-MuscleMemoryCommand 'where %MM_TEST_PATH%'
+            Assert-Equal (@(& ([scriptblock]::Create($rewrite))) -join "`n") $pathOnly
         } finally {
             $env:PATH = $savedPath
+            $env:MM_TEST_PATH = $previousEnvValue
         }
     } else {
         Assert-Rejected 'where git'
@@ -308,11 +310,31 @@ try {
     Assert-True (Test-Path -LiteralPath $sourceFile -PathType Leaf) 'move /y preview moved the source.'
 
     try {
+        $env:MM_TEST_PATH = 'source.dat'
+        $unflagged = ConvertFrom-MuscleMemoryCommand 'rd %MM_TEST_PATH%'
+        Assert-Equal $unflagged 'rd %MM_TEST_PATH%'
+        try {
+            & ([scriptblock]::Create($unflagged))
+            throw 'Unflagged rd should report the missing literal percent path.'
+        } catch [System.Management.Automation.ItemNotFoundException] {
+            Assert-True (Test-Path -LiteralPath $sourceFile -PathType Leaf) 'Unflagged rd targeted the environment path.'
+        }
         $env:MM_TEST_PATH = 'nested'
         $expandedResults = @(& ([scriptblock]::Create((ConvertFrom-MuscleMemoryCommand 'dir /s %mm_test_path%'))))
         Assert-True ($expandedResults.FullName -contains $file) 'dir /s must list the expanded path.'
-        & ([scriptblock]::Create((ConvertFrom-MuscleMemoryCommand 'rd /s %MM_TEST_PATH%')))
+        $state = [pscustomobject]@{ Line = ''; Rewrites = 0; Accepts = 0 }
+        Invoke-TestEnter 'rd /s %MM_TEST_PATH%' $state
+        Assert-True ($state.Rewrites -eq 1 -and $state.Accepts -eq 0) 'First DOS environment Enter must only rewrite.'
+        Invoke-TestEnter $state.Line $state
+        Assert-True ($state.Rewrites -eq 1 -and $state.Accepts -eq 1) 'Second DOS environment Enter must accept the preview.'
+        & ([scriptblock]::Create($state.Line))
         Assert-True (Test-Path -LiteralPath $file -PathType Leaf) 'rd /s preview removed the expanded path.'
+        $specialName = 'a''; Write-Output unexpected'
+        New-Item -ItemType Directory -Path (Join-Path $fixture $specialName) | Out-Null
+        $rewrite = ConvertFrom-MuscleMemoryCommand 'cd /d %MM_TEST_PATH%'
+        $env:MM_TEST_PATH = $specialName
+        $output = @(& ([scriptblock]::Create($rewrite)))
+        Assert-True ($output.Count -eq 0 -and (Get-Location).Path -eq (Join-Path $fixture $specialName)) 'The current value must remain a single literal path at execution.'
     } finally {
         $env:MM_TEST_PATH = $previousEnvValue
     }
