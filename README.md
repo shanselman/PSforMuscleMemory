@@ -1,32 +1,12 @@
 # PSforMuscleMemory
 
-Use familiar cmd.exe commands in PowerShell, with a chance to review the translation:
-
-```powershell
-cd %temp%            # Shows cd $env:TEMP
-cd /d 'D:\my folder' # Changes location, including drive
-dir /b               # Lists bare names
-dir /s *.txt         # Lists matching filenames recursively
-dir /a               # Includes hidden and system entries
-dir /o:n             # Lists by name, ascending
-dir /o:-d            # Lists newest entries first
-rd /s /q 'my folder' # Previews recursive removal; does not delete
-del /s *.txt         # Previews matching file removal; does not delete
-where git*           # Searches the current directory and PATH
-sort file.txt        # Sorts lines in a file
-copy /y source dest   # Previews a copy; does not overwrite
-move /y source dest   # Previews a move; does not overwrite
-```
-
-Press Enter once to see the PowerShell command, then Enter again to run it. Other commands run on the first Enter. Editing the rewrite makes it fresh input, so an ordinary PowerShell command runs immediately.
+Use familiar `cmd.exe` shortcuts in PowerShell. Try `cd %temp%`: the first Enter shows `cd $env:TEMP`; the second runs it. Ordinary PowerShell commands still run on the first Enter.
 
 ## Get started
 
 Requires PowerShell 7.2+ and PSReadLine 2.2+ in an interactive terminal.
 
-### PowerShell Gallery (after publication)
-
-Use the `Install-Module` command from PowerShellGet to install for your user account, then import and enable the module for the current session:
+Install from PowerShell Gallery with PowerShellGet, then enable it for this session:
 
 ```powershell
 Install-Module -Name PSforMuscleMemory -Repository PSGallery -Scope CurrentUser
@@ -34,34 +14,34 @@ Import-Module PSforMuscleMemory
 Enable-PSforMuscleMemory
 ```
 
-### Clone from GitHub
+To enable it in future sessions, add the `Import-Module` and `Enable-PSforMuscleMemory` lines to the file at `$PROFILE` (create it if it doesn't exist). Run `Disable-PSforMuscleMemory` to turn it off for the current session. Importing the module alone doesn't change your Enter key. The module doesn't support PSReadLine Vi mode or custom Enter bindings.
 
-To try the module before publication, clone the repository and enable it for the current session:
+If you prefer to clone this repo, run `Import-Module .\PSforMuscleMemory.psd1` from the clone, then `Enable-PSforMuscleMemory`.
 
-```powershell
-git clone https://github.com/shanselman/PSforMuscleMemory.git
-Set-Location PSforMuscleMemory
-Import-Module .\PSforMuscleMemory.psd1
-Enable-PSforMuscleMemory
-```
+## What works
 
-To turn it off, run `Disable-PSforMuscleMemory`. It restores the original Enter binding if it has not been changed since enabling. Importing the module alone does not enable it or change your profile.
+| Shortcut | What it does |
+| --- | --- |
+| `cd /d path` | Changes folder and drive. |
+| `dir /b [path]`, `dir /a [path]` | Lists just the names, or includes hidden and system items, respectively. |
+| `dir /s [path-or-filename-pattern]` | Lists recursively; `dir /s *.txt` finds matching files under the current folder. |
+| `dir /o:n [path]`, `dir /o:-d [path]` | Sorts by name or by newest first, respectively. |
+| `where filename-pattern` | On Windows only, searches the current folder and `PATH` using `where.exe`. |
+| `sort filename` | Sorts lines in one file. |
+| `rd /s [/q] path`, `del /s filename-pattern` | Previews removing a folder tree or matching files under the current folder. `del /s` never matches folders. |
+| `copy /y source destination`, `move /y source destination` | Previews copying or moving one source to one destination. |
 
-Enable refuses Vi mode and custom Enter bindings. It preserves an existing validation hook with `AcceptLine`, but refuses `ValidateAndAcceptLine` with a validation hook because that hook could alter a preview. Installing such a hook afterward blocks Enter until the conflict is removed or the module is disabled.
+Use one command at a time. Quote literal paths with spaces. The DOS shortcuts don't support extra switches, PowerShell expressions, pipes, or redirection. `where` and `del /s` take a filename pattern, not a path.
 
-## Safety and supported syntax
+`%NAME%` works in unquoted arguments to `cd` and the DOS shortcuts above. Names aren't case-sensitive. Undefined names and quoted arguments are left alone. The preview shows a `$env:` reference, not its value; the second Enter uses the current value.
 
-Every `rd /s`, `del /s`, `copy /y`, and `move /y` translation includes **`-WhatIf`**; there is no deletion or overwrite mode. `rd /s /q` remains preview-only despite cmd.exe's quiet-delete meaning. `del /s` previews matching files in the current directory tree and never removes directories. `copy /y` and `move /y` preview one literal source and destination; they do not overwrite or move files. This is not a general safeguard: normal PowerShell commands, scripts, alternate accept bindings, and commands entered while disabled are not protected. Editing away `-WhatIf` removes preview protection and can permit real deletion or overwrite.
+## Safety
 
-Supported forms are `cd /d path`, `dir /b [path]`, `dir /s [path-or-filename-pattern]`, `dir /a [path]`, `dir /o:n [path]`, `dir /o:-d [path]`, `rd /s [/q] path`, `del /s filename-pattern`, `where filename-pattern`, `sort filename`, `copy /y source destination`, and `move /y source destination`. Paths are literal and may be quoted; quote paths with spaces. `dir /s *.txt` and `del /s *.txt` match filenames recursively in the current directory tree; `del /s` patterns must be filename-only. `dir /a` includes hidden and system entries. The supported `/o` options sort by name ascending or modification time newest first.
-
-Use `%NAME%` (letters, digits, and underscores) in a bare argument to `cd` or a supported DOS form. Names are matched case-insensitively; undefined names and quoted arguments are left alone. For example, `cd %temp%\work` shows `cd "${env:TEMP}\work"`. DOS forms such as `dir /s %temp%` and `cd /d %userprofile%\work` use quoted `$env:` references, not the values themselves. The first Enter validates the value and picks the PowerShell form (for example, `dir /s` picks a path or a filename filter); the second Enter uses the current value with that form. Destructive DOS forms still include `-WhatIf`; unflagged `rd`, `del`, `copy`, and `move` are not expanded.
-
-On Windows, `where` calls the system `where.exe` to search the current directory and PATH for all matches. It accepts one filename pattern (`*` and `?` are allowed), without search locations or extra switches. This shorthand is unavailable outside Windows. Standalone `sort filename` sorts lines from one literal file; PowerShell pipelines such as `gci | sort Name.Length` pass through unchanged. Copy and move previews require `/y` and exactly one literal source and destination; unflagged PowerShell copy and move commands pass through unchanged and are not previewed. Commands and switches are case-insensitive. Variables, expressions, unsupported switches, pipelines, redirections, and multiple commands are rejected for attempted DOS forms. Other commands pass through unchanged.
+Translated removal, copy, and move commands always include `-WhatIf`, even with `rd /s /q`. **Don't remove `-WhatIf` unless you intend to run the real operation.** Editing a translation makes it a new command. Ordinary PowerShell commands (including `rd`, `del`, `copy`, and `move` without the DOS switches above), scripts, and other ways of submitting commands are not protected.
 
 ## Tests
 
-Run `.\tests\PSforMuscleMemory.Tests.ps1` in a fresh PowerShell session (`pwsh -NoProfile`). The suite checks translations, pass-through, preview safety, and the two-Enter flow. It leaves a uniquely named fixture in the system temporary directory rather than deleting it.
+Run `.\tests\PSforMuscleMemory.Tests.ps1` in a fresh `pwsh -NoProfile` session. The tests leave a fixture in your temp folder.
 
 ## License
 
