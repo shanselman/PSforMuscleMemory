@@ -13,7 +13,7 @@ For a supported command, the first Enter rewrites the line without running it. R
 
 ## Try it
 
-Requires PowerShell 7.2 or newer and PSReadLine 2.2 or newer in an interactive host. Automated checks run with PowerShell 7.7 and PSReadLine 2.2 and 2.4.5 on Windows. Clone this repository, then:
+Requires PowerShell 7.2 or newer and PSReadLine 2.2 or newer in an interactive host. Automated checks run with PowerShell 7.7 and PSReadLine 2.2 and 2.4.5 on Windows. The two-Enter `dir /s` and `rd /s` flows were also verified interactively in PowerShell 7.7 on Windows with a normal profile, an `AcceptLine` binding, and an existing command-validation handler. Clone this repository, then:
 
 ```powershell
 Import-Module .\PSforMuscleMemory.psd1
