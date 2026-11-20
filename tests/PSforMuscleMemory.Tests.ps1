@@ -12,6 +12,18 @@ function Assert-Rejected($line) {
 function Assert-True($condition, $message) {
     if (-not $condition) { throw $message }
 }
+function Invoke-TestEnter($line, $state) {
+    & (Get-Module PSforMuscleMemory) {
+        param($testLine, $state)
+        Invoke-MuscleMemoryLine $testLine {
+            param($replacement)
+            $state.Line = $replacement
+            $state.Rewrites++
+        } {
+            $state.Accepts++
+        }
+    } $line $state
+}
 
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir /s') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '.' -Recurse"
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'DiR "a b" /S') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath 'a b' -Recurse"
@@ -51,6 +63,40 @@ Set-Content -LiteralPath $file -Value 'keep'
 $escaped = $fixture.Replace("'", "''")
 $translated = ConvertFrom-MuscleMemoryCommand "rd /s '$escaped'"
 Assert-True ($translated.EndsWith(' -Recurse -WhatIf')) 'Translation must include explicit WhatIf.'
+
+$state = [pscustomobject]@{ Line = ''; Rewrites = 0; Accepts = 0 }
+Invoke-TestEnter "rd /s '$escaped'" $state
+Assert-Equal $state.Line $translated
+Assert-True ($state.Rewrites -eq 1 -and $state.Accepts -eq 0) 'First Enter must only rewrite.'
+Assert-True (Test-Path -LiteralPath $file -PathType Leaf) 'First Enter changed the fixture.'
+Invoke-TestEnter $state.Line $state
+Assert-True ($state.Rewrites -eq 1 -and $state.Accepts -eq 1) 'Second Enter must accept the rewrite.'
+
+$state = [pscustomobject]@{ Line = ''; Rewrites = 0; Accepts = 0 }
+Invoke-TestEnter "rd /s '$escaped'" $state
+Invoke-TestEnter ($state.Line + ' -Verbose') $state
+Assert-True ($state.Rewrites -eq 1 -and $state.Accepts -eq 1) 'An edited PowerShell rewrite must be treated as fresh input.'
+
+$state = [pscustomobject]@{ Line = ''; Rewrites = 0; Accepts = 0 }
+Invoke-TestEnter 'dir /s .' $state
+Assert-True ($state.Rewrites -eq 1 -and $state.Accepts -eq 0) 'First dir Enter must only rewrite.'
+Invoke-TestEnter $state.Line $state
+Assert-True ($state.Rewrites -eq 1 -and $state.Accepts -eq 1) 'Second dir Enter must accept the rewrite.'
+$state = [pscustomobject]@{ Line = ''; Rewrites = 0; Accepts = 0 }
+Invoke-TestEnter 'dir /s .' $state
+Invoke-TestEnter 'dir /s another' $state
+Assert-Equal $state.Line "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath 'another' -Recurse"
+Assert-True ($state.Rewrites -eq 2 -and $state.Accepts -eq 0) 'Edited shorthand must be rewritten again.'
+Invoke-TestEnter 'Get-Location' $state
+Assert-True ($state.Accepts -eq 1) 'An edited ordinary command must be accepted immediately.'
+$state = [pscustomobject]@{ Line = ''; Rewrites = 0; Accepts = 0 }
+Invoke-TestEnter 'Get-Location' $state
+Assert-True ($state.Rewrites -eq 0 -and $state.Accepts -eq 1) 'Unrelated commands must be accepted immediately.'
+$state = [pscustomobject]@{ Line = ''; Rewrites = 0; Accepts = 0 }
+$rejected = $false
+try { Invoke-TestEnter 'rd /s x -WhatIf:$false' $state } catch { $rejected = $true }
+Assert-True ($rejected -and $state.Rewrites -eq 0 -and $state.Accepts -eq 0) 'Unsupported removal must not be rewritten or accepted.'
+
 $WhatIfPreference = $false
 $PSDefaultParameterValues['*:WhatIf'] = $false
 & ([scriptblock]::Create($translated))

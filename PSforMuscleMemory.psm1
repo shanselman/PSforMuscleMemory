@@ -58,6 +58,17 @@ function ConvertFrom-MuscleMemoryCommand {
 
 $script:translator = ${function:ConvertFrom-MuscleMemoryCommand}
 
+function Invoke-MuscleMemoryLine {
+    param([string] $Line, [scriptblock] $Replace, [scriptblock] $Accept)
+
+    $translated = & $script:translator $Line
+    if ($translated -cne $Line) {
+        & $Replace $translated
+        return
+    }
+    & $Accept
+}
+
 function Enable-PSforMuscleMemory {
     [CmdletBinding()]
     param()
@@ -89,18 +100,18 @@ function Enable-PSforMuscleMemory {
         $cursor = 0
         [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref] $line, [ref] $cursor)
         try {
-            $translated = & $script:translator $line
+            Invoke-MuscleMemoryLine $line {
+                param($translated)
+                [Microsoft.PowerShell.PSConsoleReadLine]::Replace(0, $line.Length, $translated)
+            } {
+                if ($script:originalEnter -eq 'ValidateAndAcceptLine') {
+                    [Microsoft.PowerShell.PSConsoleReadLine]::ValidateAndAcceptLine($key, $arg)
+                } else {
+                    [Microsoft.PowerShell.PSConsoleReadLine]::AcceptLine($key, $arg)
+                }
+            }
         } catch {
             [Console]::Error.WriteLine("PSforMuscleMemory: $($_.Exception.Message)")
-            return
-        }
-        if ($translated -cne $line) {
-            [Microsoft.PowerShell.PSConsoleReadLine]::Replace(0, $line.Length, $translated)
-        }
-        if ($script:originalEnter -eq 'ValidateAndAcceptLine') {
-            [Microsoft.PowerShell.PSConsoleReadLine]::ValidateAndAcceptLine($key, $arg)
-        } else {
-            [Microsoft.PowerShell.PSConsoleReadLine]::AcceptLine($key, $arg)
         }
     }
     $script:enabled = $true
