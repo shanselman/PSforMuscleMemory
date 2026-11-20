@@ -27,15 +27,70 @@ function Invoke-TestEnter($line, $state) {
 
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir /s') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '.' -Recurse"
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'DiR "a b" /S') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath 'a b' -Recurse"
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'cd /d D:\work') "Microsoft.PowerShell.Management\Set-Location -LiteralPath 'D:\work'"
+Assert-Equal (ConvertFrom-MuscleMemoryCommand "CD /D 'a''b'") "Microsoft.PowerShell.Management\Set-Location -LiteralPath 'a''b'"
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir /b') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '.' -Name"
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir /b "a b"') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath 'a b' -Name"
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir /s *.txt') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '.' -Filter '*.txt' -Recurse"
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'DiR /S *.txt') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '.' -Filter '*.txt' -Recurse"
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir /a') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '.' -Force"
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir /o:n') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '.' | Microsoft.PowerShell.Utility\Sort-Object -Property Name"
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir /o:-d') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '.' | Microsoft.PowerShell.Utility\Sort-Object -Property LastWriteTime -Descending"
 Assert-Equal (ConvertFrom-MuscleMemoryCommand "RD /s 'a''b'") "Microsoft.PowerShell.Management\Remove-Item -LiteralPath 'a''b' -Recurse -WhatIf"
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'rd "a[1]" /S') "Microsoft.PowerShell.Management\Remove-Item -LiteralPath 'a[1]' -Recurse -WhatIf"
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'rd /s /q folder') "Microsoft.PowerShell.Management\Remove-Item -LiteralPath 'folder' -Recurse -WhatIf"
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'rd folder /q /s') "Microsoft.PowerShell.Management\Remove-Item -LiteralPath 'folder' -Recurse -WhatIf"
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'del /s *.txt') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '.' -Filter '*.txt' -Recurse -File | Microsoft.PowerShell.Management\Remove-Item -WhatIf"
+Assert-Equal (ConvertFrom-MuscleMemoryCommand "DeL /S 'keep me.txt'") "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '.' -Filter 'keep me.txt' -Recurse -File | Microsoft.PowerShell.Management\Remove-Item -WhatIf"
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'where git') "Microsoft.PowerShell.Core\Get-Command -Name '.\git' -CommandType Application | Microsoft.PowerShell.Utility\Select-Object -ExpandProperty Source; Microsoft.PowerShell.Core\Get-Command -Name 'git' -CommandType Application | Microsoft.PowerShell.Utility\Select-Object -ExpandProperty Source"
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'where git*') "Microsoft.PowerShell.Core\Get-Command -Name '.\git*' -CommandType Application | Microsoft.PowerShell.Utility\Select-Object -ExpandProperty Source; Microsoft.PowerShell.Core\Get-Command -Name 'git*' -CommandType Application | Microsoft.PowerShell.Utility\Select-Object -ExpandProperty Source"
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'sort file.txt') "Microsoft.PowerShell.Management\Get-Content -LiteralPath 'file.txt' | Microsoft.PowerShell.Utility\Sort-Object"
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'copy /y source.txt target.txt') "Microsoft.PowerShell.Management\Copy-Item -LiteralPath 'source.txt' -Destination 'target.txt' -WhatIf"
+Assert-Equal (ConvertFrom-MuscleMemoryCommand "copy 'source file.txt' 'target file.txt' /Y") "Microsoft.PowerShell.Management\Copy-Item -LiteralPath 'source file.txt' -Destination 'target file.txt' -WhatIf"
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'move /y source.txt target.txt') "Microsoft.PowerShell.Management\Move-Item -LiteralPath 'source.txt' -Destination 'target.txt' -WhatIf"
 Assert-Equal (ConvertFrom-MuscleMemoryCommand "rd /s 'a''; Write-Host nope'") "Microsoft.PowerShell.Management\Remove-Item -LiteralPath 'a''; Write-Host nope' -Recurse -WhatIf"
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'Get-ChildItem .') 'Get-ChildItem .'
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'rd folder') 'rd folder'
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'Get-ChildItem | where Name') 'Get-ChildItem | where Name'
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'sort Name') 'sort Name'
 
 @(
+    'cd /d .',
+    'dir /b',
+    'dir /s *.txt',
+    'dir /a',
+    'dir /o:n',
+    'dir /o:-d',
+    'rd /s /q folder',
+    'del /s *.txt',
+    'where git',
+    'sort file.txt',
+    'copy /y source.txt target.txt',
+    'move /y source.txt target.txt'
+) | ForEach-Object {
+    $state = [pscustomobject]@{ Line = ''; Rewrites = 0; Accepts = 0 }
+    Invoke-TestEnter $_ $state
+    Assert-True ($state.Rewrites -eq 1 -and $state.Accepts -eq 0) "First Enter did not only rewrite: $_"
+    Invoke-TestEnter $state.Line $state
+    Assert-True ($state.Rewrites -eq 1 -and $state.Accepts -eq 1) "Second Enter did not accept the rewrite: $_"
+}
+
+@(
+    'cd /d',
+    'cd /d -LiteralPath',
+    'cd /d $path',
+    'cd /d (Get-Location)',
+    'cd /d x; Get-Location',
+    'cd /x x',
+    'dir /b /s .',
+    'dir /b $path',
+    'dir /s sub/*.txt',
+    'dir /a /b',
+    'dir /o:x',
+    'dir /o:-d *.txt',
     'rd /s',
     'rd /s /q',
+    'rd /s /q x -Force',
     'rd /s x -WhatIf:$false',
     'rd /s x -Confirm:$false',
     'rd /s x -Force',
@@ -52,16 +107,83 @@ Assert-Equal (ConvertFrom-MuscleMemoryCommand 'rd folder') 'rd folder'
     'rd /s:$false x',
     'rd /s` x',
     'dir /s x /q',
+    'del /s',
+    'del /s *.txt -Force',
+    'del /s sub/*.txt',
+    'del /s $pattern',
+    'del /s (Get-ChildItem)',
+    'del /s *.txt; Get-Location',
+    'where git /r',
+    'where git; Get-Location',
+    'sort file.txt /r',
+    'sort file.txt -Descending',
+    'copy /y source.txt',
+    'copy /y source.txt target.txt extra.txt',
+    'copy /y $source target.txt',
+    'move /y source.txt target.txt -Force',
+    'move source.txt target.txt',
     'rd /s ""'
 ) | ForEach-Object { Assert-Rejected $_ }
 
 $fixture = Join-Path ([System.IO.Path]::GetTempPath()) ("PSforMuscleMemory-" + [guid]::NewGuid())
 $nested = Join-Path $fixture 'nested'
+$matchingDirectory = Join-Path $fixture 'fake.txt'
 $file = Join-Path $nested 'keep.txt'
+$hiddenFile = Join-Path $fixture 'hidden.dat'
+$localCommand = Join-Path $fixture 'local-tool.cmd'
+$sourceFile = Join-Path $fixture 'source.dat'
+$targetFile = Join-Path $fixture 'target.dat'
 New-Item -ItemType Directory -Path $nested | Out-Null
-Set-Content -LiteralPath $file -Value 'keep'
+Set-Content -LiteralPath $file -Value @('zeta', 'alpha')
+Set-Content -LiteralPath $hiddenFile -Value 'hidden'
+[System.IO.File]::SetAttributes($hiddenFile, [System.IO.File]::GetAttributes($hiddenFile) -bor [System.IO.FileAttributes]::Hidden)
+Set-Content -LiteralPath $localCommand -Value '@echo off'
+Set-Content -LiteralPath $sourceFile -Value 'source'
+Set-Content -LiteralPath $targetFile -Value 'target'
 $escaped = $fixture.Replace("'", "''")
-$translated = ConvertFrom-MuscleMemoryCommand "rd /s '$escaped'"
+$originalLocation = Get-Location
+try {
+    Set-Location -LiteralPath $fixture
+    $recursiveResults = @(& ([scriptblock]::Create((ConvertFrom-MuscleMemoryCommand 'dir /s *.txt'))))
+    Assert-True ($recursiveResults.Count -eq 1 -and $recursiveResults[0].FullName -eq $file) 'dir /s *.txt must match nested filenames recursively.'
+    $bareNames = @(& ([scriptblock]::Create((ConvertFrom-MuscleMemoryCommand 'dir /b'))))
+    Assert-True ($bareNames -contains 'nested') 'dir /b must output bare child names.'
+    $allNames = @(& ([scriptblock]::Create((ConvertFrom-MuscleMemoryCommand 'dir /a'))))
+    Assert-True ($allNames.FullName -contains $hiddenFile) 'dir /a must include hidden entries.'
+    $nameOrder = @(& ([scriptblock]::Create((ConvertFrom-MuscleMemoryCommand 'dir /o:n'))))
+    Assert-True (($nameOrder.Name -join '|') -ceq (($nameOrder | Sort-Object Name).Name -join '|')) 'dir /o:n must sort by name.'
+    $dateOrder = @(& ([scriptblock]::Create((ConvertFrom-MuscleMemoryCommand 'dir /o:-d'))))
+    Assert-True (($dateOrder.LastWriteTime -join '|') -ceq (($dateOrder | Sort-Object LastWriteTime -Descending).LastWriteTime -join '|')) 'dir /o:-d must sort newest first.'
+    $sortedLines = @(& ([scriptblock]::Create((ConvertFrom-MuscleMemoryCommand 'sort nested/keep.txt'))))
+    Assert-True (($sortedLines -join '|') -ceq 'alpha|zeta') 'sort must sort file lines.'
+    $whereResults = @(& ([scriptblock]::Create((ConvertFrom-MuscleMemoryCommand 'where local-tool*'))))
+    Assert-True ($whereResults -contains $localCommand) 'where must search the current directory and honor filename patterns.'
+
+    New-Item -ItemType Directory -Path $matchingDirectory | Out-Null
+    $delTranslation = ConvertFrom-MuscleMemoryCommand 'del /s *.txt'
+    Assert-True ($delTranslation.Contains(' -WhatIf')) 'del /s translation must include explicit WhatIf.'
+    $WhatIfPreference = $false
+    $PSDefaultParameterValues['*:WhatIf'] = $false
+    & ([scriptblock]::Create($delTranslation))
+    Assert-True (Test-Path -LiteralPath $file -PathType Leaf) 'del /s preview removed a matching file.'
+    Assert-True (Test-Path -LiteralPath $nested -PathType Container) 'del /s must not remove matching directories.'
+    Assert-True (Test-Path -LiteralPath $matchingDirectory -PathType Container) 'del /s must not remove directories matching a file pattern.'
+    & ([scriptblock]::Create((ConvertFrom-MuscleMemoryCommand 'copy /y source.dat target.dat')))
+    Assert-True ([System.IO.File]::ReadAllText($targetFile).Trim() -eq 'target') 'copy /y preview overwrote the destination.'
+    Assert-True (Test-Path -LiteralPath $sourceFile -PathType Leaf) 'copy /y preview changed the source.'
+    & ([scriptblock]::Create((ConvertFrom-MuscleMemoryCommand 'move /y source.dat target.dat')))
+    Assert-True ([System.IO.File]::ReadAllText($targetFile).Trim() -eq 'target') 'move /y preview overwrote the destination.'
+    Assert-True (Test-Path -LiteralPath $sourceFile -PathType Leaf) 'move /y preview moved the source.'
+
+    Set-Location -LiteralPath $nested
+    $cdTranslation = ConvertFrom-MuscleMemoryCommand "cd /d '$escaped'"
+    & ([scriptblock]::Create($cdTranslation))
+    Assert-True ((Get-Location).Path -eq $fixture) 'cd /d must change the current location.'
+} finally {
+    Set-Location -LiteralPath $originalLocation.Path
+}
+
+$translated = ConvertFrom-MuscleMemoryCommand "rd /s /q '$escaped'"
 Assert-True ($translated.EndsWith(' -Recurse -WhatIf')) 'Translation must include explicit WhatIf.'
 
 $state = [pscustomobject]@{ Line = ''; Rewrites = 0; Accepts = 0 }

@@ -3,8 +3,18 @@
 Use familiar cmd.exe commands in PowerShell, with a chance to review the translation:
 
 ```powershell
-dir /s 'my folder'  # Lists recursively
-rd /s 'my folder'   # Previews recursive removal; does not delete
+cd /d 'D:\my folder' # Changes location, including drive
+dir /b               # Lists bare names
+dir /s *.txt         # Lists matching filenames recursively
+dir /a               # Includes hidden and system entries
+dir /o:n             # Lists by name, ascending
+dir /o:-d            # Lists newest entries first
+rd /s /q 'my folder' # Previews recursive removal; does not delete
+del /s *.txt         # Previews matching file removal; does not delete
+where git*           # Searches the current directory and PATH
+sort file.txt        # Sorts lines in a file
+copy /y source dest   # Previews a copy; does not overwrite
+move /y source dest   # Previews a move; does not overwrite
 ```
 
 Press Enter once to see the PowerShell command, then Enter again to run it. Other commands run on the first Enter. Editing the rewrite makes it fresh input, so an ordinary PowerShell command runs immediately.
@@ -26,9 +36,9 @@ Enable refuses Vi mode and custom Enter bindings. It preserves an existing valid
 
 ## Safety and supported syntax
 
-Every `rd /s` translation includes **`-WhatIf`**; there is no deletion mode. This is not a general deletion safeguard: normal PowerShell commands, scripts, alternate accept bindings, and commands entered while disabled are not protected. Editing away `-WhatIf` removes preview protection and can permit real deletion.
+Every `rd /s`, `del /s`, `copy /y`, and `move /y` translation includes **`-WhatIf`**; there is no deletion or overwrite mode. `rd /s /q` remains preview-only despite cmd.exe's quiet-delete meaning. `del /s` previews matching files in the current directory tree and never removes directories. `copy /y` and `move /y` preview one literal source and destination; they do not overwrite or move files. This is not a general safeguard: normal PowerShell commands, scripts, alternate accept bindings, and commands entered while disabled are not protected. Editing away `-WhatIf` removes preview protection and can permit real deletion or overwrite.
 
-Use `dir /s [path]` or `rd /s path`, with the switch and path in either order. `dir /s` alone lists the current directory. Commands and `/s` are case-insensitive. Paths are literal: `dir /s *.txt` is not a recursive filename-pattern search. Quote paths with spaces. Paths beginning with `/` or `-`, variables, other switches, pipelines, redirections, and multiple commands are not supported. Unsupported `rd /s` input is rejected. No `-Force` is added.
+Supported forms are `cd /d path`, `dir /b [path]`, `dir /s [path-or-filename-pattern]`, `dir /a [path]`, `dir /o:n [path]`, `dir /o:-d [path]`, `rd /s [/q] path`, `del /s filename-pattern`, `where filename-pattern`, `sort filename`, `copy /y source destination`, and `move /y source destination`. Paths are literal and may be quoted; quote paths with spaces. `dir /s *.txt` and `del /s *.txt` match filenames recursively in the current directory tree; `del /s` patterns must be filename-only. `dir /a` includes hidden and system entries. The supported `/o` options sort by name ascending or modification time newest first. `where` searches the current directory and PATH using `*` and `?` filename patterns; other cmd.exe search options are not supported. `sort` sorts lines from one literal file; other cmd.exe options and pipeline input are not supported. Copy and move require `/y` and exactly one literal source and destination; unflagged multi-path forms are rejected. Commands and switches are case-insensitive. Variables, expressions, unsupported switches, pipelines, redirections, and multiple commands are rejected for attempted DOS forms. Other commands pass through unchanged.
 
 ## Tests
 
