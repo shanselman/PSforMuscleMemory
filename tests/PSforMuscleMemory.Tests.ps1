@@ -53,6 +53,9 @@ Assert-Equal (ConvertFrom-MuscleMemoryCommand 'Get-ChildItem .') 'Get-ChildItem 
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'rd folder') 'rd folder'
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'Get-ChildItem | where Name') 'Get-ChildItem | where Name'
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'sort Name') 'sort Name'
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'gci | sort Name.Length') 'gci | sort Name.Length'
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'copy a.txt b.txt') 'copy a.txt b.txt'
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'move a.txt b') 'move a.txt b'
 
 @(
     'cd /d .',
@@ -121,7 +124,6 @@ Assert-Equal (ConvertFrom-MuscleMemoryCommand 'sort Name') 'sort Name'
     'copy /y source.txt target.txt extra.txt',
     'copy /y $source target.txt',
     'move /y source.txt target.txt -Force',
-    'move source.txt target.txt',
     'rd /s ""'
 ) | ForEach-Object { Assert-Rejected $_ }
 

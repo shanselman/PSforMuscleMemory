@@ -141,12 +141,11 @@ function ConvertFrom-MuscleMemoryCommand {
             $node.Value.StartsWith('/')
         }, $true)).Count -gt 0
         $elements = @($_.CommandElements | Select-Object -Skip 1)
-        $isWhere = $name -ieq 'where' -and $elements.Count -eq 1 -and
-            $_.Parent -is [PipelineAst] -and $_.Parent.PipelineElements.Count -eq 1
-        $isSortPath = $name -ieq 'sort' -and $elements.Count -gt 0 -and
+        $isSingleCommandPipeline = $_.Parent -is [PipelineAst] -and $_.Parent.PipelineElements.Count -eq 1
+        $isWhere = $isSingleCommandPipeline -and $name -ieq 'where' -and $elements.Count -eq 1
+        $isSortPath = $isSingleCommandPipeline -and $name -ieq 'sort' -and $elements.Count -gt 0 -and
             $elements[0].Extent.Text -match '([\\/]|[.][^\\/]+)$'
-        $isTransfer = $name -in @('copy', 'move') -and $elements.Count -ge 2
-        $hasDosSwitch -or $isWhere -or $isSortPath -or $isTransfer
+        $hasDosSwitch -or $isWhere -or $isSortPath
     })
 
     if ($attempts.Count -eq 0) { return $Line }
