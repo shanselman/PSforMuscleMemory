@@ -21,7 +21,21 @@ Press Enter once to see the PowerShell command, then Enter again to run it. Othe
 
 ## Get started
 
-Requires PowerShell 7.2+ and PSReadLine 2.2+ in an interactive terminal. Clone the repository and enable the module for the current session:
+Requires PowerShell 7.2+ and PSReadLine 2.2+ in an interactive terminal.
+
+### PowerShell Gallery (after publication)
+
+Use the `Install-Module` command from PowerShellGet to install for your user account, then import and enable the module for the current session:
+
+```powershell
+Install-Module -Name PSforMuscleMemory -Repository PSGallery -Scope CurrentUser
+Import-Module PSforMuscleMemory
+Enable-PSforMuscleMemory
+```
+
+### Clone from GitHub
+
+To try the module before publication, clone the repository and enable it for the current session:
 
 ```powershell
 git clone https://github.com/shanselman/PSforMuscleMemory.git
