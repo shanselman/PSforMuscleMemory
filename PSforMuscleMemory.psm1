@@ -139,11 +139,12 @@ function ConvertFrom-MuscleMemoryCommand {
         if ($name -notin @('cd', 'dir', 'rd', 'del', 'where', 'sort', 'copy', 'move')) { return $false }
         $elements = @($_.CommandElements | Select-Object -Skip 1)
         $isSingleCommandPipeline = $_.Parent -is [PipelineAst] -and $_.Parent.PipelineElements.Count -eq 1
-        if ($name -ieq 'where') {
-            # Where-Object filters can contain slash-prefixed values or script blocks.
-            if ($isSingleCommandPipeline -and $elements.Count -eq 1 -and
+        if ($name -in @('where', 'sort')) {
+            # Filters and sort properties can contain slash text that is not a switch.
+            if ($isSingleCommandPipeline -and $elements.Count -gt 0 -and
                 ($elements[0] -is [StringConstantExpressionAst] -or $elements[0] -is [ExpandableStringExpressionAst])) {
-                return $true
+                if ($name -ieq 'where' -and $elements.Count -eq 1) { return $true }
+                if ($name -ieq 'sort' -and $elements[0].Extent.Text -match '([\\/]|[.][^\\/]+)$') { return $true }
             }
             foreach ($element in $elements) {
                 if ($element -is [CommandParameterAst]) { break }
@@ -154,14 +155,11 @@ function ConvertFrom-MuscleMemoryCommand {
             }
             return $false
         }
-        $hasDosSwitch = @($_.FindAll({
+        return @($_.FindAll({
             param($node)
             ($node -is [StringConstantExpressionAst] -or $node -is [ExpandableStringExpressionAst]) -and
             $node.Value.StartsWith('/')
         }, $true)).Count -gt 0
-        $isSortPath = $isSingleCommandPipeline -and $name -ieq 'sort' -and $elements.Count -gt 0 -and
-            $elements[0].Extent.Text -match '([\\/]|[.][^\\/]+)$'
-        $hasDosSwitch -or $isSortPath
     })
 
     if ($attempts.Count -eq 0) { return $Line }

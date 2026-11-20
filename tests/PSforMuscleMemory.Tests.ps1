@@ -69,6 +69,8 @@ Assert-Equal (ConvertFrom-MuscleMemoryCommand 'Get-ChildItem | where Name') 'Get
     'Get-Process | where Path -like /api/*'
     "Get-Process | where Path -eq '/r'"
     'Get-Content log.txt | where { $_ -like ''/api/*'' }'
+    'Get-Content log.txt | sort { $_.Split(''/'')[0] }'
+    'Get-Content log.txt | sort -Property @{ Expression = { $_.Split(''/'')[0] } }'
 ) | ForEach-Object {
     $state = [pscustomobject]@{ Line = ''; Rewrites = 0; Accepts = 0 }
     Assert-Equal (ConvertFrom-MuscleMemoryCommand $_) $_
@@ -146,6 +148,7 @@ Assert-Equal (ConvertFrom-MuscleMemoryCommand 'move a.txt b') 'move a.txt b'
     'where ''$PATH:git''',
     'where ''git" /r''',
     'sort file.txt /r',
+    'sort /r | Out-Null',
     'sort file.txt -Descending',
     'copy /y source.txt',
     'copy /y source.txt target.txt extra.txt',
