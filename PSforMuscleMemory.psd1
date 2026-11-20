@@ -1,6 +1,6 @@
 @{
     RootModule = 'PSforMuscleMemory.psm1'
-    ModuleVersion = '0.2.0'
+    ModuleVersion = '0.2.1'
     GUID = 'e8098a42-ef0e-40be-b470-81822ad51c87'
     Author = 'Scott Hanselman and PSforMuscleMemory contributors'
     Description = 'Use familiar cmd.exe commands in PowerShell with opt-in PSReadLine review and preview-only removal, copy, and move translations.'
@@ -15,7 +15,7 @@
             ProjectUri = 'https://github.com/shanselman/PSforMuscleMemory'
             LicenseUri = 'https://github.com/shanselman/PSforMuscleMemory/blob/main/LICENSE'
             Tags = @('PowerShell', 'PSReadLine', 'cmd', 'DOS', 'CommandLine')
-            ReleaseNotes = 'Adds cmd.exe-style %NAME% environment variable expansion in unquoted arguments to cd and supported DOS commands. Review the translation before execution; removal, copy, and move translations still use -WhatIf. The DOS-style where command requires Windows.'
+            ReleaseNotes = 'Enables publishing to the PowerShell Gallery through the tagged release workflow. No module behavior changes.'
         }
     }
 }
