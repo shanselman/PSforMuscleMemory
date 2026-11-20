@@ -44,4 +44,4 @@ On Windows, `where` calls the system `where.exe` to search the current directory
 
 ## Tests
 
-Run `.\tests\PSforMuscleMemory.Tests.ps1`. The tests leave a uniquely named fixture in the system temporary directory rather than deleting it. Automated checks passed on Windows with PowerShell 7.7 and PSReadLine 2.2 and 2.4.5. Both commands were also verified interactively with PowerShell 7.7 in a normal-profile terminal using `AcceptLine` and an existing validation hook.
+Run `.\tests\PSforMuscleMemory.Tests.ps1` in a fresh PowerShell session (`pwsh -NoProfile`). The suite checks translations, pass-through, preview safety, and the two-Enter flow. It leaves a uniquely named fixture in the system temporary directory rather than deleting it.

@@ -47,9 +47,34 @@ Assert-Equal (ConvertFrom-MuscleMemoryCommand 'copy /y source.txt target.txt') "
 Assert-Equal (ConvertFrom-MuscleMemoryCommand "copy 'source file.txt' 'target file.txt' /Y") "Microsoft.PowerShell.Management\Copy-Item -LiteralPath 'source file.txt' -Destination 'target file.txt' -WhatIf"
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'move /y source.txt target.txt') "Microsoft.PowerShell.Management\Move-Item -LiteralPath 'source.txt' -Destination 'target.txt' -WhatIf"
 Assert-Equal (ConvertFrom-MuscleMemoryCommand "rd /s 'a''; Write-Host nope'") "Microsoft.PowerShell.Management\Remove-Item -LiteralPath 'a''; Write-Host nope' -Recurse -WhatIf"
+foreach ($codePoint in 0x2018, 0x2019, 0x201A, 0x201B) {
+    $literalPath = "a$([char]$codePoint); Write-Host nope"
+    $rewrite = ConvertFrom-MuscleMemoryCommand "rd /s `"$literalPath`""
+    $tokens = $null
+    $parseErrors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseInput($rewrite, [ref]$tokens, [ref]$parseErrors)
+    $commands = @($ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.CommandAst] }, $true))
+    Assert-True ($parseErrors.Count -eq 0 -and $ast.EndBlock.Statements.Count -eq 1 -and $commands.Count -eq 1) "Smart quote $codePoint escaped the literal path."
+    $command = $commands[0]
+    Assert-Equal ($command.GetCommandName()) 'Microsoft.PowerShell.Management\Remove-Item'
+    Assert-Equal $command.CommandElements[1].ParameterName 'LiteralPath'
+    Assert-Equal $command.CommandElements[2].Value $literalPath
+    Assert-True ($command.CommandElements[-1].ParameterName -ceq 'WhatIf' -and $null -eq $command.CommandElements[-1].Argument) "Smart quote $codePoint lost explicit -WhatIf."
+}
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'Get-ChildItem .') 'Get-ChildItem .'
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'rd folder') 'rd folder'
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'Get-ChildItem | where Name') 'Get-ChildItem | where Name'
+@(
+    "Get-Process | where Path -like '/api/*'"
+    'Get-Process | where Path -like /api/*'
+    "Get-Process | where Path -eq '/r'"
+    'Get-Content log.txt | where { $_ -like ''/api/*'' }'
+) | ForEach-Object {
+    $state = [pscustomobject]@{ Line = ''; Rewrites = 0; Accepts = 0 }
+    Assert-Equal (ConvertFrom-MuscleMemoryCommand $_) $_
+    Invoke-TestEnter $_ $state
+    Assert-True ($state.Rewrites -eq 0 -and $state.Accepts -eq 1) "Expected pass-through on first Enter: $_"
+}
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'sort Name') 'sort Name'
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'gci | sort Name.Length') 'gci | sort Name.Length'
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'copy a.txt b.txt') 'copy a.txt b.txt'
@@ -115,6 +140,8 @@ Assert-Equal (ConvertFrom-MuscleMemoryCommand 'move a.txt b') 'move a.txt b'
     'del /s (Get-ChildItem)',
     'del /s *.txt; Get-Location',
     'where git /r',
+    "where git '/r'",
+    'where /r . git | Out-Null',
     'where git; Get-Location',
     'where ''$PATH:git''',
     'where ''git" /r''',

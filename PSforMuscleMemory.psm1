@@ -137,17 +137,31 @@ function ConvertFrom-MuscleMemoryCommand {
     $attempts = @($commands | Where-Object {
         $name = $_.GetCommandName()
         if ($name -notin @('cd', 'dir', 'rd', 'del', 'where', 'sort', 'copy', 'move')) { return $false }
+        $elements = @($_.CommandElements | Select-Object -Skip 1)
+        $isSingleCommandPipeline = $_.Parent -is [PipelineAst] -and $_.Parent.PipelineElements.Count -eq 1
+        if ($name -ieq 'where') {
+            # Where-Object filters can contain slash-prefixed values or script blocks.
+            if ($isSingleCommandPipeline -and $elements.Count -eq 1 -and
+                ($elements[0] -is [StringConstantExpressionAst] -or $elements[0] -is [ExpandableStringExpressionAst])) {
+                return $true
+            }
+            foreach ($element in $elements) {
+                if ($element -is [CommandParameterAst]) { break }
+                if ($element -is [StringConstantExpressionAst] -and
+                    $element.Value -match '^/(?:[a-z][a-z0-9]*|\?)(?::.*)?$') {
+                    return $true
+                }
+            }
+            return $false
+        }
         $hasDosSwitch = @($_.FindAll({
             param($node)
             ($node -is [StringConstantExpressionAst] -or $node -is [ExpandableStringExpressionAst]) -and
             $node.Value.StartsWith('/')
         }, $true)).Count -gt 0
-        $elements = @($_.CommandElements | Select-Object -Skip 1)
-        $isSingleCommandPipeline = $_.Parent -is [PipelineAst] -and $_.Parent.PipelineElements.Count -eq 1
-        $isWhere = $isSingleCommandPipeline -and $name -ieq 'where' -and $elements.Count -eq 1
         $isSortPath = $isSingleCommandPipeline -and $name -ieq 'sort' -and $elements.Count -gt 0 -and
             $elements[0].Extent.Text -match '([\\/]|[.][^\\/]+)$'
-        $hasDosSwitch -or $isWhere -or $isSortPath
+        $hasDosSwitch -or $isSortPath
     })
 
     if ($attempts.Count -eq 0) { return $Line }
