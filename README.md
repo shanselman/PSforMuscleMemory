@@ -45,3 +45,7 @@ On Windows, `where` calls the system `where.exe` to search the current directory
 ## Tests
 
 Run `.\tests\PSforMuscleMemory.Tests.ps1` in a fresh PowerShell session (`pwsh -NoProfile`). The suite checks translations, pass-through, preview safety, and the two-Enter flow. It leaves a uniquely named fixture in the system temporary directory rather than deleting it.
+
+## License
+
+[MIT](LICENSE)
