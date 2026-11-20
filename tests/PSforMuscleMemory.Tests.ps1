@@ -42,8 +42,6 @@ Assert-Equal (ConvertFrom-MuscleMemoryCommand 'rd /s /q folder') "Microsoft.Powe
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'rd folder /q /s') "Microsoft.PowerShell.Management\Remove-Item -LiteralPath 'folder' -Recurse -WhatIf"
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'del /s *.txt') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '.' -Filter '*.txt' -Recurse -File | Microsoft.PowerShell.Management\Remove-Item -WhatIf"
 Assert-Equal (ConvertFrom-MuscleMemoryCommand "DeL /S 'keep me.txt'") "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '.' -Filter 'keep me.txt' -Recurse -File | Microsoft.PowerShell.Management\Remove-Item -WhatIf"
-Assert-Equal (ConvertFrom-MuscleMemoryCommand 'where git') "Microsoft.PowerShell.Core\Get-Command -Name '.\git' -CommandType Application | Microsoft.PowerShell.Utility\Select-Object -ExpandProperty Source; Microsoft.PowerShell.Core\Get-Command -Name 'git' -CommandType Application | Microsoft.PowerShell.Utility\Select-Object -ExpandProperty Source"
-Assert-Equal (ConvertFrom-MuscleMemoryCommand 'where git*') "Microsoft.PowerShell.Core\Get-Command -Name '.\git*' -CommandType Application | Microsoft.PowerShell.Utility\Select-Object -ExpandProperty Source; Microsoft.PowerShell.Core\Get-Command -Name 'git*' -CommandType Application | Microsoft.PowerShell.Utility\Select-Object -ExpandProperty Source"
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'sort file.txt') "Microsoft.PowerShell.Management\Get-Content -LiteralPath 'file.txt' | Microsoft.PowerShell.Utility\Sort-Object"
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'copy /y source.txt target.txt') "Microsoft.PowerShell.Management\Copy-Item -LiteralPath 'source.txt' -Destination 'target.txt' -WhatIf"
 Assert-Equal (ConvertFrom-MuscleMemoryCommand "copy 'source file.txt' 'target file.txt' /Y") "Microsoft.PowerShell.Management\Copy-Item -LiteralPath 'source file.txt' -Destination 'target file.txt' -WhatIf"
@@ -66,10 +64,10 @@ Assert-Equal (ConvertFrom-MuscleMemoryCommand 'move a.txt b') 'move a.txt b'
     'dir /o:-d',
     'rd /s /q folder',
     'del /s *.txt',
-    'where git',
     'sort file.txt',
     'copy /y source.txt target.txt',
     'move /y source.txt target.txt'
+    if ($IsWindows) { 'where git' }
 ) | ForEach-Object {
     $state = [pscustomobject]@{ Line = ''; Rewrites = 0; Accepts = 0 }
     Invoke-TestEnter $_ $state
@@ -118,6 +116,8 @@ Assert-Equal (ConvertFrom-MuscleMemoryCommand 'move a.txt b') 'move a.txt b'
     'del /s *.txt; Get-Location',
     'where git /r',
     'where git; Get-Location',
+    'where ''$PATH:git''',
+    'where ''git" /r''',
     'sort file.txt /r',
     'sort file.txt -Descending',
     'copy /y source.txt',
@@ -132,14 +132,12 @@ $nested = Join-Path $fixture 'nested'
 $matchingDirectory = Join-Path $fixture 'fake.txt'
 $file = Join-Path $nested 'keep.txt'
 $hiddenFile = Join-Path $fixture 'hidden.dat'
-$localCommand = Join-Path $fixture 'local-tool.cmd'
 $sourceFile = Join-Path $fixture 'source.dat'
 $targetFile = Join-Path $fixture 'target.dat'
 New-Item -ItemType Directory -Path $nested | Out-Null
 Set-Content -LiteralPath $file -Value @('zeta', 'alpha')
 Set-Content -LiteralPath $hiddenFile -Value 'hidden'
 [System.IO.File]::SetAttributes($hiddenFile, [System.IO.File]::GetAttributes($hiddenFile) -bor [System.IO.FileAttributes]::Hidden)
-Set-Content -LiteralPath $localCommand -Value '@echo off'
 Set-Content -LiteralPath $sourceFile -Value 'source'
 Set-Content -LiteralPath $targetFile -Value 'target'
 $escaped = $fixture.Replace("'", "''")
@@ -158,8 +156,49 @@ try {
     Assert-True (($dateOrder.LastWriteTime -join '|') -ceq (($dateOrder | Sort-Object LastWriteTime -Descending).LastWriteTime -join '|')) 'dir /o:-d must sort newest first.'
     $sortedLines = @(& ([scriptblock]::Create((ConvertFrom-MuscleMemoryCommand 'sort nested/keep.txt'))))
     Assert-True (($sortedLines -join '|') -ceq 'alpha|zeta') 'sort must sort file lines.'
-    $whereResults = @(& ([scriptblock]::Create((ConvertFrom-MuscleMemoryCommand 'where local-tool*'))))
-    Assert-True ($whereResults -contains $localCommand) 'where must search the current directory and honor filename patterns.'
+    if ($IsWindows) {
+        $nativeWhere = Join-Path ([Environment]::SystemDirectory) 'where.exe'
+        $pathDir = Join-Path $fixture 'path-bin'
+        $secondDir = Join-Path $fixture 'other-bin'
+        New-Item -ItemType Directory -Path $pathDir, $secondDir | Out-Null
+        $pathOnly = Join-Path $pathDir "native tool's.cmd"
+        $firstMatch = Join-Path $pathDir 'native-multi.cmd'
+        $secondMatch = Join-Path $secondDir 'native-multi.cmd'
+        $localMatch = Join-Path $fixture 'native-local.cmd'
+        foreach ($candidate in $pathOnly, $firstMatch, $secondMatch, $localMatch) {
+            Set-Content -LiteralPath $candidate -Value '@echo off'
+        }
+        $savedPath = $env:PATH
+        try {
+            $env:PATH = "$pathDir;$secondDir"
+            $PSNativeCommandUseErrorActionPreference = $false
+            foreach ($case in @(
+                @{ Pattern = "native tool's.cmd"; Matches = @($pathOnly); ExitCode = 0 }
+                @{ Pattern = 'native-multi.cmd'; Matches = @($firstMatch, $secondMatch); ExitCode = 0 }
+                @{ Pattern = 'native-loc?l.*'; Matches = @($localMatch); ExitCode = 0 }
+                @{ Pattern = 'native-absent.cmd'; Matches = @(); ExitCode = 1 }
+            )) {
+                $expected = @(& $nativeWhere $case.Pattern 2>&1)
+                $nativeExitCode = $LASTEXITCODE
+                $quotedPattern = $case.Pattern.Replace("'", "''")
+                $rewrite = [scriptblock]::Create((ConvertFrom-MuscleMemoryCommand "where '$quotedPattern'"))
+                $actual = @(& $rewrite 2>&1)
+                Assert-Equal $LASTEXITCODE $case.ExitCode
+                Assert-Equal $LASTEXITCODE $nativeExitCode
+                Assert-Equal ($actual -join "`n") ($expected -join "`n")
+                if ($case.ExitCode -eq 0) {
+                    Assert-Equal $actual.Count $case.Matches.Count
+                    foreach ($match in $case.Matches) {
+                        Assert-True ($actual -contains $match) "where did not find $match."
+                    }
+                }
+            }
+        } finally {
+            $env:PATH = $savedPath
+        }
+    } else {
+        Assert-Rejected 'where git'
+    }
 
     New-Item -ItemType Directory -Path $matchingDirectory | Out-Null
     $delTranslation = ConvertFrom-MuscleMemoryCommand 'del /s *.txt'

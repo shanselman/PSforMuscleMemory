@@ -13,7 +13,7 @@ function ConvertTo-MuscleMemoryLiteral {
         $Value.IndexOfAny([char[]]@("`0", "`r", "`n")) -ge 0) {
         throw $Usage
     }
-    return "'" + $Value.Replace("'", "''") + "'"
+    return "'" + ($Value -replace "['\u2018\u2019\u201A\u201B]", '$&$&') + "'"
 }
 
 function ConvertFrom-MuscleMemoryCd {
@@ -88,10 +88,12 @@ function ConvertFrom-MuscleMemoryDel {
 function ConvertFrom-MuscleMemoryWhere {
     param([string[]] $Arguments, [string] $Usage)
 
-    if ($Arguments.Count -ne 1 -or $Arguments[0].IndexOfAny([char[]]@('\', '/', '[', ']')) -ge 0) { throw $Usage }
+    if ($Arguments.Count -ne 1 -or $Arguments[0].IndexOfAny([char[]]'\/:[]"<>|') -ge 0) { throw $Usage }
     $literal = ConvertTo-MuscleMemoryLiteral $Arguments[0] $Usage
-    $localLiteral = "'.\" + $Arguments[0].Replace("'", "''") + "'"
-    return "Microsoft.PowerShell.Core\Get-Command -Name $localLiteral -CommandType Application | Microsoft.PowerShell.Utility\Select-Object -ExpandProperty Source; Microsoft.PowerShell.Core\Get-Command -Name $literal -CommandType Application | Microsoft.PowerShell.Utility\Select-Object -ExpandProperty Source"
+    if (-not $IsWindows) { throw 'The DOS-style where command requires Windows where.exe.' }
+    $application = "$([Environment]::SystemDirectory)\where.exe"
+    $quotedApplication = ConvertTo-MuscleMemoryLiteral $application $Usage
+    return "& $quotedApplication $literal"
 }
 
 function ConvertFrom-MuscleMemorySort {
