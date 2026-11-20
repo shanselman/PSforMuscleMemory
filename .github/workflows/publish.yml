@@ -1,0 +1,55 @@
+name: Publish to PowerShell Gallery
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run tests
+        run: .\tests\PSforMuscleMemory.Tests.ps1
+
+      - name: Validate version and stage module
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifest = Test-ModuleManifest -Path .\PSforMuscleMemory.psd1
+          $expectedTag = "v$($manifest.Version)"
+          if ($env:RELEASE_TAG -cne $expectedTag) {
+              throw "Release tag must exactly match manifest version: $expectedTag."
+          }
+          $modulePath = Join-Path $env:RUNNER_TEMP 'PSforMuscleMemory'
+          New-Item -ItemType Directory -Path $modulePath | Out-Null
+          Copy-Item -LiteralPath .\PSforMuscleMemory.psd1, .\PSforMuscleMemory.psm1, .\README.md, .\LICENSE -Destination $modulePath
+          Test-ModuleManifest -Path (Join-Path $modulePath 'PSforMuscleMemory.psd1') | Out-Null
+
+      - name: Publish module
+        env:
+          PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:PSGALLERY_API_KEY)) {
+              throw 'Repository secret PSGALLERY_API_KEY is required to publish.'
+          }
+          Import-Module PowerShellGet -MinimumVersion 2.2.5 -MaximumVersion 2.99
+          if (-not (PowerShellGet\Get-PSRepository | Where-Object Name -eq PSGallery)) {
+              PowerShellGet\Register-PSRepository -Default
+          }
+          $repository = PowerShellGet\Get-PSRepository -Name PSGallery
+          if ($repository.SourceLocation -cne 'https://www.powershellgallery.com/api/v2' -or
+              $repository.PublishLocation -cne 'https://www.powershellgallery.com/api/v2/package') {
+              throw 'PSGallery must use the official PowerShell Gallery source and publish endpoints.'
+          }
+          PowerShellGet\Publish-Module -Path (Join-Path $env:RUNNER_TEMP 'PSforMuscleMemory') -Repository PSGallery -NuGetApiKey $env:PSGALLERY_API_KEY

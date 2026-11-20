@@ -43,6 +43,17 @@ Translated removal, copy, and move commands always include `-WhatIf`, even with 
 
 Run `.\tests\PSforMuscleMemory.Tests.ps1` in a fresh `pwsh -NoProfile` session. The tests leave a fixture in your temp folder.
 
+## Publish a release
+
+Maintainers need the repository secret `PSGALLERY_API_KEY` set to a PowerShell Gallery API key. To release a new version, bump `ModuleVersion` in `PSforMuscleMemory.psd1`, update its release notes, and commit and push those changes to `main`. Then tag that commit and push the tag, for example:
+
+```powershell
+git tag v0.2.1
+git push origin v0.2.1
+```
+
+The tag must exactly match `v<ModuleVersion>`. The GitHub Action runs the Windows PowerShell tests, validates the manifest, and publishes only the manifest, module, README, and LICENSE to the official PowerShell Gallery using PowerShellGet. Check the action run for the result. Version `0.2.0` is already published; use a new version for each release.
+
 ## License
 
 [MIT](LICENSE)
