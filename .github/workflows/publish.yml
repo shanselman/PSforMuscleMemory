@@ -18,7 +18,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run tests
-        run: .\tests\PSforMuscleMemory.Tests.ps1
+        run: |
+          .\tests\PSforMuscleMemory.Tests.ps1
+          .\tests\ReleaseWorkflow.Tests.ps1
 
       - name: Validate version and stage module
         env:
@@ -48,8 +50,8 @@ jobs:
               PowerShellGet\Register-PSRepository -Default
           }
           $repository = PowerShellGet\Get-PSRepository -Name PSGallery
-          if ($repository.SourceLocation -cne 'https://www.powershellgallery.com/api/v2' -or
-              $repository.PublishLocation -cne 'https://www.powershellgallery.com/api/v2/package') {
+          if ($repository.SourceLocation.TrimEnd('/') -cne 'https://www.powershellgallery.com/api/v2' -or
+              $repository.PublishLocation.TrimEnd('/') -cne 'https://www.powershellgallery.com/api/v2/package') {
               throw 'PSGallery must use the official PowerShell Gallery source and publish endpoints.'
           }
           PowerShellGet\Publish-Module -Path (Join-Path $env:RUNNER_TEMP 'PSforMuscleMemory') -Repository PSGallery -NuGetApiKey $env:PSGALLERY_API_KEY

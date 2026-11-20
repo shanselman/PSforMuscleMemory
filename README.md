@@ -41,7 +41,7 @@ Translated removal, copy, and move commands always include `-WhatIf`, even with 
 
 ## Tests
 
-Run `.\tests\PSforMuscleMemory.Tests.ps1` in a fresh `pwsh -NoProfile` session. The tests leave a fixture in your temp folder.
+Run `.\tests\PSforMuscleMemory.Tests.ps1` in a fresh `pwsh -NoProfile` session. The tests leave a fixture in your temp folder. Run `.\tests\ReleaseWorkflow.Tests.ps1` to check the release endpoint guard with PowerShellGet 2.2.5+ (2.x); it never publishes.
 
 ## Publish a release
 
