@@ -36,7 +36,7 @@ function ConvertFrom-MuscleMemoryCd {
 function ConvertFrom-MuscleMemoryDir {
     param([object[]] $Arguments, [string] $Usage)
 
-    $modes = @('/s', '/b', '/a', '/o:n', '/o:-d')
+    $modes = @('/s', '/b', '/a', '/w', '/o:n', '/o:-d')
     $switches = @($Arguments | Where-Object { $_.Value -in $modes })
     $paths = @($Arguments | Where-Object { $_.Value -notin $modes })
     if ($switches.Count -ne 1 -or $paths.Count -gt 1) { throw $Usage }
@@ -51,6 +51,16 @@ function ConvertFrom-MuscleMemoryDir {
         '/a' {
             if ($path.IndexOfAny([char[]]@('*', '?')) -ge 0) { throw $Usage }
             return "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath $literal -Force"
+        }
+        '/w' {
+            if ($path.IndexOfAny([char[]]@('*', '?')) -ge 0) {
+                if ($path.IndexOfAny([char[]]@('\', '/', '[', ']')) -ge 0) { throw $Usage }
+                $listing = "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '.' -Filter $literal"
+            } else {
+                $listing = "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath $literal"
+            }
+            $property = '{ if ($_.PSIsContainer) { "[$($_.Name)]" } else { $_.Name } }'
+            return "$listing | Microsoft.PowerShell.Utility\Sort-Object -Property Name | Microsoft.PowerShell.Utility\Format-Wide -AutoSize -Property $property"
         }
         '/o:n' {
             if ($path.IndexOfAny([char[]]@('*', '?')) -ge 0) { throw $Usage }
@@ -217,7 +227,7 @@ function ConvertFrom-MuscleMemoryCommand {
     })
 
     if ($commands.Count -eq 0) { return $Line }
-    $usage = 'Unsupported DOS-style command. Use cd /d path, dir /b [path], dir /s [path-or-filename-pattern], dir /a [path], dir /o:n [path], dir /o:-d [path], rd /s [/q] path, del /s filename-pattern, where filename-pattern, sort filename, copy /y source destination, or move /y source destination.'
+    $usage = 'Unsupported DOS-style command. Use cd /d path, dir /b [path], dir /s [path-or-filename-pattern], dir /w [path-or-filename-pattern], dir /a [path], dir /o:n [path], dir /o:-d [path], rd /s [/q] path, del /s filename-pattern, where filename-pattern, sort filename, copy /y source destination, or move /y source destination.'
     $command = $commands[0]
     if ($parseErrors.Count -ne 0 -or $commands.Count -ne 1 -or
         $command.InvocationOperator -ne [TokenKind]::Unknown -or

@@ -25,6 +25,7 @@ If you prefer to clone this repo, run `Import-Module .\PSforMuscleMemory.psd1` f
 | `cd /d path` | Changes folder and drive. |
 | `dir /b [path]`, `dir /a [path]` | Lists just the names, or includes hidden and system items, respectively. |
 | `dir /s [path-or-filename-pattern]` | Lists recursively; `dir /s *.txt` finds matching files under the current folder. |
+| `dir /w [path-or-filename-pattern]` | Lists names in columns, with folder names in brackets; `dir /w *.txt` lists matching names. Long names may be truncated by `Format-Wide`. |
 | `dir /o:n [path]`, `dir /o:-d [path]` | Sorts by name or by newest first, respectively. |
 | `where filename-pattern` | On Windows only, searches the current folder and `PATH` using `where.exe`. |
 | `sort filename` | Sorts lines in one file. |

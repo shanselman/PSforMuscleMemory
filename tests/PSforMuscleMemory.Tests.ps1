@@ -34,6 +34,10 @@ Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir /b "a b"') "Microsoft.PowerSh
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir /s *.txt') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '.' -Filter '*.txt' -Recurse"
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'DiR /S *.txt') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '.' -Filter '*.txt' -Recurse"
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir /a') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '.' -Force"
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir /w') 'Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath ''.'' | Microsoft.PowerShell.Utility\Sort-Object -Property Name | Microsoft.PowerShell.Utility\Format-Wide -AutoSize -Property { if ($_.PSIsContainer) { "[$($_.Name)]" } else { $_.Name } }'
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'DiR "a b" /W') 'Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath ''a b'' | Microsoft.PowerShell.Utility\Sort-Object -Property Name | Microsoft.PowerShell.Utility\Format-Wide -AutoSize -Property { if ($_.PSIsContainer) { "[$($_.Name)]" } else { $_.Name } }'
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir /w *.txt') 'Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath ''.'' -Filter ''*.txt'' | Microsoft.PowerShell.Utility\Sort-Object -Property Name | Microsoft.PowerShell.Utility\Format-Wide -AutoSize -Property { if ($_.PSIsContainer) { "[$($_.Name)]" } else { $_.Name } }'
+Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir keep* /w') 'Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath ''.'' -Filter ''keep*'' | Microsoft.PowerShell.Utility\Sort-Object -Property Name | Microsoft.PowerShell.Utility\Format-Wide -AutoSize -Property { if ($_.PSIsContainer) { "[$($_.Name)]" } else { $_.Name } }'
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir /o:n') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '.' | Microsoft.PowerShell.Utility\Sort-Object -Property Name"
 Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir /o:-d') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '.' | Microsoft.PowerShell.Utility\Sort-Object -Property LastWriteTime -Descending"
 Assert-Equal (ConvertFrom-MuscleMemoryCommand "RD /s 'a''b'") "Microsoft.PowerShell.Management\Remove-Item -LiteralPath 'a''b' -Recurse -WhatIf"
@@ -119,6 +123,7 @@ try {
 
     $env:MM_TEST_PATH = "folder's name"
     Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir /s %mm_test_path%') 'Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath "${env:MM_TEST_PATH}" -Recurse'
+    Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir /w %mm_test_path%') 'Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath "${env:MM_TEST_PATH}" | Microsoft.PowerShell.Utility\Sort-Object -Property Name | Microsoft.PowerShell.Utility\Format-Wide -AutoSize -Property { if ($_.PSIsContainer) { "[$($_.Name)]" } else { $_.Name } }'
     Assert-Equal (ConvertFrom-MuscleMemoryCommand 'cd /d %MM_TEST_PATH%\x') 'Microsoft.PowerShell.Management\Set-Location -LiteralPath "${env:MM_TEST_PATH}\x"'
     Assert-Equal (ConvertFrom-MuscleMemoryCommand 'dir /s "%MM_TEST_PATH%"') "Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath '%MM_TEST_PATH%' -Recurse"
     Assert-Equal (ConvertFrom-MuscleMemoryCommand 'del /s %MM_TEST_PATH%.txt') 'Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath ''.'' -Filter "${env:MM_TEST_PATH}.txt" -Recurse -File | Microsoft.PowerShell.Management\Remove-Item -WhatIf'
@@ -144,7 +149,9 @@ try {
 @(
     'cd /d .',
     'dir /b',
+    'dir /w',
     'dir /s *.txt',
+    'dir /w *.txt',
     'dir /a',
     'dir /o:n',
     'dir /o:-d',
@@ -170,6 +177,9 @@ try {
     'cd /d x; Get-Location',
     'cd /x x',
     'dir /b /s .',
+    'dir /w /s .',
+    'dir /w sub/*.txt',
+    'dir /w *.txt sub',
     'dir /b $path',
     'dir /s sub/*.txt',
     'dir /a /b',
@@ -294,6 +304,16 @@ try {
     }
 
     New-Item -ItemType Directory -Path $matchingDirectory | Out-Null
+    $wideOutput = @(& ([scriptblock]::Create((ConvertFrom-MuscleMemoryCommand 'dir /w'))) | Out-String -Stream) -join "`n"
+    Assert-True ($wideOutput.Contains('[fake.txt]') -and $wideOutput.Contains('[nested]')) 'dir /w must bracket directory names in its output.'
+    Assert-True ($wideOutput.Contains('source.dat') -and $wideOutput.Contains('target.dat')) 'dir /w must include file names in its output.'
+    $namePositions = foreach ($name in '[fake.txt]', '[nested]', 'source.dat', 'target.dat') { $wideOutput.IndexOf($name) }
+    Assert-True (($namePositions -ge 0).Count -eq 4 -and ($namePositions[0] -lt $namePositions[1]) -and
+        ($namePositions[1] -lt $namePositions[2]) -and ($namePositions[2] -lt $namePositions[3])) 'dir /w must format names in sorted order.'
+    $patternOutput = @(& ([scriptblock]::Create((ConvertFrom-MuscleMemoryCommand 'dir /w *.txt'))) | Out-String -Stream) -join "`n"
+    Assert-True ($patternOutput.Contains('[fake.txt]')) 'dir /w filename patterns must include matching directories.'
+    $pathOutput = @(& ([scriptblock]::Create((ConvertFrom-MuscleMemoryCommand 'dir /w nested'))) | Out-String -Stream) -join "`n"
+    Assert-True ($pathOutput.Contains('keep.txt')) 'dir /w directory paths must list that directory.'
     $delTranslation = ConvertFrom-MuscleMemoryCommand 'del /s *.txt'
     Assert-True ($delTranslation.Contains(' -WhatIf')) 'del /s translation must include explicit WhatIf.'
     $WhatIfPreference = $false
@@ -322,6 +342,8 @@ try {
         $env:MM_TEST_PATH = 'nested'
         $expandedResults = @(& ([scriptblock]::Create((ConvertFrom-MuscleMemoryCommand 'dir /s %mm_test_path%'))))
         Assert-True ($expandedResults.FullName -contains $file) 'dir /s must list the expanded path.'
+        $expandedWideOutput = @(& ([scriptblock]::Create((ConvertFrom-MuscleMemoryCommand 'dir /w %mm_test_path%'))) | Out-String -Stream) -join "`n"
+        Assert-True ($expandedWideOutput.Contains('keep.txt')) 'dir /w must list a safely expanded directory path.'
         $state = [pscustomobject]@{ Line = ''; Rewrites = 0; Accepts = 0 }
         Invoke-TestEnter 'rd /s %MM_TEST_PATH%' $state
         Assert-True ($state.Rewrites -eq 1 -and $state.Accepts -eq 0) 'First DOS environment Enter must only rewrite.'
@@ -363,6 +385,11 @@ Invoke-TestEnter "rd /s '$escaped'" $state
 Invoke-TestEnter ($state.Line + ' -Verbose') $state
 Assert-True ($state.Rewrites -eq 1 -and $state.Accepts -eq 1) 'An edited PowerShell rewrite must be treated as fresh input.'
 
+$state = [pscustomobject]@{ Line = ''; Rewrites = 0; Accepts = 0 }
+Invoke-TestEnter 'dir /w' $state
+Assert-True ($state.Rewrites -eq 1 -and $state.Accepts -eq 0) 'First dir /w Enter must only rewrite.'
+Invoke-TestEnter $state.Line $state
+Assert-True ($state.Rewrites -eq 1 -and $state.Accepts -eq 1) 'Second dir /w Enter must accept the rewrite.'
 $state = [pscustomobject]@{ Line = ''; Rewrites = 0; Accepts = 0 }
 Invoke-TestEnter 'dir /s .' $state
 Assert-True ($state.Rewrites -eq 1 -and $state.Accepts -eq 0) 'First dir Enter must only rewrite.'
